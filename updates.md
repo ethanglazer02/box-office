@@ -1,0 +1,5 @@
+I want to make some updates after initial round of testing. Here are the notes I have:
+
+- Users dont care much about the 'degrees' concept, and were more interested in trying to minimize the box office total to prove they were able to conncect actors through smaller, more niche movies. Because of this I want to get rid of the 'seven degrees' title and point of the game and make it a mix of how many movies/actor units it takes (the degrees) AND the total box office number to see how well people do. I want to rename the site because of this to something good for that
+- I want to add an undo feature so users can go back if they want to
+- there is an issue with hints and costars, it always chooses the same actor even if you use multiple hints, make it so it chooses the actor with the most box office total alltogether in their movies, and then if they use another hint it goes to the second most box office total actor, and so on...
