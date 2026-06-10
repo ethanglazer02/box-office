@@ -17,7 +17,8 @@ export default function Autocomplete({
   fetchSuggestions,
   placeholder,
   autoFocus,
-  disabled
+  disabled,
+  suppressNextOpenSignal
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -25,6 +26,7 @@ export default function Autocomplete({
   placeholder?: string;
   autoFocus?: boolean;
   disabled?: boolean;
+  suppressNextOpenSignal?: number;
 }) {
   const [items, setItems] = useState<Suggestion[]>([]);
   const [open, setOpen] = useState(false);
@@ -37,6 +39,17 @@ export default function Autocomplete({
   const seq = useRef(0);
   // Set right after a selection so the value-change effect doesn't reopen the menu.
   const justPicked = useRef(false);
+
+  useEffect(() => {
+    if (suppressNextOpenSignal === undefined) return;
+    justPicked.current = true;
+    seq.current += 1;
+    clearTimeout(debounce.current);
+    setOpen(false);
+    setItems([]);
+    setActive(-1);
+    setLoading(false);
+  }, [suppressNextOpenSignal]);
 
   useEffect(() => {
     if (justPicked.current) {

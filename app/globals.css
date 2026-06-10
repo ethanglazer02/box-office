@@ -10,8 +10,8 @@
   --ink: oklch(0.22 0.022 62);
   --ink-soft: oklch(0.42 0.02 64);
   --cream: oklch(0.93 0.018 85);
-  --muted: oklch(0.66 0.018 70);
-  --muted-d: oklch(0.5 0.016 68);
+  --muted: oklch(0.75 0.018 70);
+  --muted-d: oklch(0.63 0.016 68);
   --win: oklch(0.82 0.13 145);
   --bad: oklch(0.7 0.17 28);
   --display: "Bodoni Moda", "Didot", "Bodoni MT", Georgia, serif;
@@ -42,8 +42,8 @@ html[data-theme="light"] {
   --ink: oklch(0.24 0.02 62);
   --ink-soft: oklch(0.41 0.018 64);
   --cream: oklch(0.23 0.02 62);
-  --muted: oklch(0.47 0.016 68);
-  --muted-d: oklch(0.62 0.014 72);
+  --muted: oklch(0.35 0.016 68);
+  --muted-d: oklch(0.29 0.014 72);
   --win: oklch(0.66 0.15 145);
   --bad: oklch(0.61 0.18 28);
   --page-bg-top: color-mix(in oklch, var(--brass) 20%, transparent);
@@ -306,7 +306,7 @@ input {
 
 .ticket-btn:hover {
   transform: translateY(-4px) rotate(-0.5deg);
-  box-shadow: 0 22px 44px -16px rgba(0, 0, 0, 0.75), 0 0 0 2px var(--brass);
+  box-shadow: 0 22px 44px -16px rgba(0, 0, 0, 0.75);
   filter: saturate(1.05);
 }
 
@@ -316,7 +316,7 @@ input {
 
 .t-grade {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--brass-d);
@@ -340,7 +340,7 @@ input {
   align-items: center;
   gap: 8px;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.24em;
   text-transform: uppercase;
   color: var(--muted-d);
@@ -373,7 +373,7 @@ input {
 
 .site-footer-link {
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 13px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--muted);
@@ -626,7 +626,7 @@ input {
 .grp-label {
   margin-bottom: 8px;
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: 12px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--muted);
@@ -695,7 +695,7 @@ input {
 
 .meta .lbl {
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--brass);
@@ -746,7 +746,7 @@ input {
 
 .steps .lbl {
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--muted);
@@ -810,7 +810,7 @@ input {
 
 .node .role {
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: 12px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--brass);
@@ -933,7 +933,7 @@ img.avatar {
 
 .serial {
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 0.12em;
   color: var(--ink-soft);
 }
@@ -948,7 +948,7 @@ img.avatar {
 
 .feat-lbl {
   font-family: var(--mono);
-  font-size: 9.5px;
+  font-size: 11.5px;
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--brass-d);
@@ -1028,7 +1028,7 @@ img.avatar {
 
 .pl {
   font-family: var(--mono);
-  font-size: 8.5px;
+  font-size: 11px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--ink-soft);
@@ -1059,7 +1059,7 @@ img.avatar {
   align-items: center;
   gap: 9px;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--muted);
@@ -1098,7 +1098,7 @@ img.avatar {
 
 .field > label {
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: 12px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--muted);
@@ -1192,7 +1192,7 @@ img.avatar {
 
 .ac-secondary {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
@@ -1320,7 +1320,7 @@ img.avatar {
 
 .hl {
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
 }
 
@@ -1347,6 +1347,21 @@ img.avatar {
 .hint-btn:hover:not(:disabled) {
   border-color: var(--brass);
   transform: translateY(-1px);
+}
+
+.hint-spinner {
+  width: 13px;
+  height: 13px;
+  border: 2px solid color-mix(in srgb, var(--cream) 22%, transparent);
+  border-top-color: var(--brass);
+  border-radius: 999px;
+  animation: hintSpin 0.75s linear infinite;
+}
+
+@keyframes hintSpin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .banner-scrim {
@@ -1425,7 +1440,7 @@ img.avatar {
 
 .b-stat .k {
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--muted);
@@ -1434,6 +1449,154 @@ img.avatar {
 .b-actions {
   display: flex;
   justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.share-flash {
+  margin-top: 14px;
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.share-flash.ok {
+  color: var(--win);
+}
+
+.share-flash.no {
+  color: var(--bad);
+}
+
+.share-inline {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid color-mix(in oklch, var(--brass) 16%, var(--noir-3));
+}
+
+.share-inline-label {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--brass);
+}
+
+.share-inline-grid {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.share-pill {
+  appearance: none;
+  min-height: 38px;
+  padding: 9px 10px;
+  border: 1px solid color-mix(in oklch, var(--brass) 18%, var(--noir-3));
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--noir-1) 84%, white 16%);
+  color: var(--cream);
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  cursor: pointer;
+  transition:
+    transform 140ms ease,
+    border-color 140ms ease,
+    background 140ms ease;
+}
+
+.share-pill-mark {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  background: rgba(255, 255, 255, 0.14);
+  color: currentColor;
+}
+
+.share-pill-logo {
+  width: 14px;
+  height: 14px;
+  display: block;
+  flex: 0 0 auto;
+}
+
+.share-pill-label {
+  white-space: nowrap;
+}
+
+.share-pill:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in oklch, var(--brass) 44%, var(--noir-3));
+  background: color-mix(in oklch, var(--brass) 8%, var(--noir-1));
+}
+
+.share-pill-x {
+  border-color: #3a3f47;
+  background: #111111;
+  color: #f5f7fa;
+}
+
+.share-pill-facebook {
+  border-color: #4e8ff4;
+  background: #1877f2;
+  color: #ffffff;
+}
+
+.share-pill-bluesky {
+  border-color: #4da4ff;
+  background: #1185fe;
+  color: #ffffff;
+}
+
+.share-pill-whatsapp {
+  border-color: #54df84;
+  background: #25d366;
+  color: #ffffff;
+}
+
+.share-pill-telegram {
+  border-color: #57b7e8;
+  background: #24a1de;
+  color: #ffffff;
+}
+
+.share-pill-reddit {
+  border-color: #ff6b36;
+  background: #ff4500;
+  color: #ffffff;
+}
+
+.share-pill-messages {
+  border-color: #63d77f;
+  background: #34c759;
+  color: #ffffff;
+}
+
+.share-pill-copy {
+  border-color: color-mix(in oklch, var(--brass) 54%, var(--noir-3));
+  background: var(--brass);
+  color: var(--accent-ink);
+}
+
+.share-pill-copy:hover {
+  border-color: color-mix(in oklch, var(--brass) 68%, var(--noir-3));
+  background: color-mix(in oklch, var(--brass) 88%, white 12%);
+  color: var(--accent-ink);
 }
 
 .lightbox {
@@ -1490,7 +1653,7 @@ img.avatar {
 .lb-role {
   margin-top: 4px;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--brass);
@@ -1546,7 +1709,7 @@ img.avatar {
 
 .loading-kicker {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--brass);
@@ -1577,6 +1740,10 @@ img.avatar {
 }
 
 @media (max-width: 720px) {
+  .share-inline-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .tickets-row,
   .fields {
     grid-template-columns: 1fr;

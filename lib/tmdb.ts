@@ -40,6 +40,25 @@ export interface TitleLite {
 }
 
 const GLOBAL_MOVIE_RECOGNITION_FLOOR = 2500;
+const actingCreditsCache = new Map<number, Promise<CreditTitle[]>>();
+const titleCastCache = new Map<string, Promise<CastMember[]>>();
+const movieRevenueCache = new Map<number, Promise<number>>();
+
+function memoizePromise<K, V>(
+  cache: Map<K, Promise<V>>,
+  key: K,
+  factory: () => Promise<V>
+): Promise<V> {
+  const cached = cache.get(key);
+  if (cached) return cached;
+
+  const promise = factory().catch((error) => {
+    cache.delete(key);
+    throw error;
+  });
+  cache.set(key, promise);
+  return promise;
+}
 
 function key(): string {
   const k = process.env.TMDB_API_KEY;
@@ -162,24 +181,77 @@ export async function getPerson(id: number): Promise<PersonLite | null> {
   }
 }
 
-// All acting credits for a person, as a flat list of titles.
-export async function getActingCredits(personId: number): Promise<CreditTitle[]> {
+export interface PersonMeta {
+  id: number;
+  name: string;
+  profilePath: string | null;
+  gender: number;
+  placeOfBirth: string | null;
+}
+
+// Identity fields needed to mint a pool entry for a newly-discovered actor.
+export async function getPersonMeta(id: number): Promise<PersonMeta | null> {
+  try {
+    const p = await tmdb<any>(`/person/${id}`);
+    return {
+      id: p.id,
+      name: p.name,
+      profilePath: p.profile_path ?? null,
+      gender: p.gender ?? 0,
+      placeOfBirth: p.place_of_birth ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export interface CombinedCredit {
+  id: number;
+  mediaType: "movie" | "tv";
+  title: string;
+  voteCount: number;
+  order: number; // billing; 99 when unknown
+  originalLanguage: string;
+  character: string;
+}
+
+// Raw cast credits (movie + tv) with billing order intact — used both to SCORE a
+// candidate's recognizability and to build their movie/tv id sets in one fetch.
+export async function getCombinedCreditsRaw(personId: number): Promise<CombinedCredit[]> {
   const data = await tmdb<{ cast: any[] }>(`/person/${personId}/combined_credits`);
   return (data.cast || [])
     .filter((c) => c.media_type === "movie" || c.media_type === "tv")
-    .map((c) => {
-      const date: string = c.release_date || c.first_air_date || "";
-      return {
-        id: c.id,
-        title: (c.title || c.name || "").trim(),
-        year: date ? date.slice(0, 4) : null,
-        mediaType: c.media_type as "movie" | "tv",
-        character: c.character,
-        voteCount: c.vote_count ?? 0,
-        originalLanguage: c.original_language ?? ""
-      };
-    })
-    .filter((c) => c.title.length > 0);
+    .map((c) => ({
+      id: c.id,
+      mediaType: c.media_type as "movie" | "tv",
+      title: (c.title || c.name || "").trim(),
+      voteCount: c.vote_count ?? 0,
+      order: c.order ?? 99,
+      originalLanguage: c.original_language ?? "",
+      character: c.character ?? "",
+    }));
+}
+
+// All acting credits for a person, as a flat list of titles.
+export async function getActingCredits(personId: number): Promise<CreditTitle[]> {
+  return memoizePromise(actingCreditsCache, personId, async () => {
+    const data = await tmdb<{ cast: any[] }>(`/person/${personId}/combined_credits`);
+    return (data.cast || [])
+      .filter((c) => c.media_type === "movie" || c.media_type === "tv")
+      .map((c) => {
+        const date: string = c.release_date || c.first_air_date || "";
+        return {
+          id: c.id,
+          title: (c.title || c.name || "").trim(),
+          year: date ? date.slice(0, 4) : null,
+          mediaType: c.media_type as "movie" | "tv",
+          character: c.character,
+          voteCount: c.vote_count ?? 0,
+          originalLanguage: c.original_language ?? ""
+        };
+      })
+      .filter((c) => c.title.length > 0);
+  });
 }
 
 // Full cast of a movie or TV title.
@@ -187,24 +259,29 @@ export async function getTitleCast(
   id: number,
   mediaType: "movie" | "tv"
 ): Promise<CastMember[]> {
-  if (mediaType === "tv") {
-    const data = await tmdb<{ cast: any[]; guest_stars?: any[] }>(`/tv/${id}/aggregate_credits`);
+  const cacheKey = `${mediaType}:${id}`;
+  return memoizePromise(titleCastCache, cacheKey, async () => {
+    if (mediaType === "tv") {
+      const data = await tmdb<{ cast: any[]; guest_stars?: any[] }>(
+        `/tv/${id}/aggregate_credits`
+      );
+      return (data.cast || []).map((c, i) => ({
+        id: c.id,
+        name: c.name,
+        character: (c.roles && c.roles[0]?.character) || undefined,
+        profilePath: c.profile_path ?? null,
+        order: c.order ?? i
+      }));
+    }
+    const data = await tmdb<{ cast: any[] }>(`/movie/${id}/credits`);
     return (data.cast || []).map((c, i) => ({
       id: c.id,
       name: c.name,
-      character: (c.roles && c.roles[0]?.character) || undefined,
+      character: c.character,
       profilePath: c.profile_path ?? null,
       order: c.order ?? i
     }));
-  }
-  const data = await tmdb<{ cast: any[] }>(`/movie/${id}/credits`);
-  return (data.cast || []).map((c, i) => ({
-    id: c.id,
-    name: c.name,
-    character: c.character,
-    profilePath: c.profile_path ?? null,
-    order: c.order ?? i
-  }));
+  });
 }
 
 // Worldwide box-office gross for a movie (0 for TV or when TMDB has no data).
@@ -213,10 +290,12 @@ export async function getMovieRevenue(
   mediaType: "movie" | "tv"
 ): Promise<number> {
   if (mediaType !== "movie") return 0;
-  try {
-    const d = await tmdb<{ revenue?: number }>(`/movie/${id}`);
-    return d.revenue || 0;
-  } catch {
-    return 0;
-  }
+  return memoizePromise(movieRevenueCache, id, async () => {
+    try {
+      const d = await tmdb<{ revenue?: number }>(`/movie/${id}`);
+      return d.revenue || 0;
+    } catch {
+      return 0;
+    }
+  });
 }

@@ -1,27 +1,13 @@
-import { NextResponse } from "next/server";
-import pool from "@/lib/actor-pool.json";
+import { NextResponse, after } from "next/server";
+import { getTierActors, maybeExpand, type Difficulty, type PoolActor } from "@/lib/actor-expansion";
 
-// Start/target pairs are drawn from a precomputed, tiered pool (built offline by
-// scripts/build-actor-pool.mjs). Each request just samples a diverse, non-repeating
-// pair from the right tier — no TMDB calls, so the route is instant.
+// Start/target pairs are drawn from a tiered pool (built offline by
+// scripts/build-actor-pool.mjs, grown over time by live expansion). Each request
+// just samples a diverse, non-repeating pair from the right tier — no blocking
+// TMDB calls, so the route stays instant; any expansion runs after the response.
 export const dynamic = "force-dynamic";
 
-type Difficulty = "easy" | "medium" | "hard";
 type Mode = "movie" | "all";
-
-interface PoolActor {
-  id: number;
-  name: string;
-  profilePath: string | null;
-  knownFor: string;
-  gender: number;
-  ethnicityTag: string;
-  movieIds: number[];
-  tvIds: number[];
-  scores: { sPct: number; fPct: number; pPct: number; gap: number };
-}
-
-const TIERS = (pool as { tiers: Record<Difficulty, PoolActor[]> }).tiers;
 
 const RECENT_ACTOR_COOKIE = "sd_recent_actor_ids";
 const RECENT_ACTOR_LIMIT = 80;
@@ -30,6 +16,9 @@ const MIN_POOL_SIZE = 12; // below this we stop honoring the cooldown filter
 // On medium, sometimes pair one easy actor with one medium actor to ease the
 // jump. Never two easy at once — the mixed pair always keeps one medium side.
 const MEDIUM_EASY_MIX_CHANCE = 0.3;
+// When a tier has fewer than this many unseen actors left, kick off a background
+// crawl to discover fresh, equally-recognizable faces for next time.
+const FRESH_LOW_WATERMARK = 40;
 
 function parseDifficulty(raw: string | null): Difficulty {
   return raw === "easy" || raw === "hard" ? raw : "medium";
@@ -154,7 +143,7 @@ export async function GET(req: Request) {
     const recent = new Set(readRecentActorIds(req));
 
     const cooledTier = (t: Difficulty) => {
-      const tier = TIERS[t] || [];
+      const tier = getTierActors(t);
       const cooled = tier.filter((a) => !recent.has(a.id));
       return cooled.length >= MIN_POOL_SIZE ? cooled : tier;
     };
@@ -183,6 +172,13 @@ export async function GET(req: Request) {
       mode,
     });
     writeRecentActorIds(response, [start.id, target.id, ...recent]);
+
+    // If this tier is running low on unseen faces, discover more after the
+    // response ships. maybeExpand self-throttles, so this is cheap to call.
+    const seenAfter = [start.id, target.id, ...recent];
+    if (candidates.length - 2 < FRESH_LOW_WATERMARK) {
+      after(() => maybeExpand(difficulty, seenAfter));
+    }
     return response;
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "Failed to start game." }, { status: 500 });

@@ -159,34 +159,6 @@ export interface HintResult {
   actorId?: number;
 }
 
-const HINT_SCORE_REVENUE_TITLES = 6;
-const personHintScoreCache = new Map<number, Promise<number>>();
-
-// Rank co-star hints by the biggest box-office footprint in their movie credits.
-// Revenue lookups are cached per actor so repeated hints don't keep re-fetching.
-async function getPersonBoxOfficeHintScore(personId: number): Promise<number> {
-  const cached = personHintScoreCache.get(personId);
-  if (cached) return cached;
-
-  const scorePromise = (async () => {
-    const credits = await getActingCredits(personId);
-    const movies = credits
-      .filter((credit) => credit.mediaType === "movie")
-      .sort((a, b) => b.voteCount - a.voteCount)
-      .slice(0, HINT_SCORE_REVENUE_TITLES);
-
-    if (movies.length === 0) return 0;
-
-    const revenues = await Promise.all(
-      movies.map((movie) => getMovieRevenue(movie.id, movie.mediaType))
-    );
-    return revenues.reduce((sum, revenue) => sum + revenue, 0);
-  })();
-
-  personHintScoreCache.set(personId, scorePromise);
-  return scorePromise;
-}
-
 // Movie hint: surface a real, well-known title the current actor is in.
 export async function movieHint(currentActorId: number, mode: Mode): Promise<HintResult> {
   const credits = inMode(await getActingCredits(currentActorId), mode);
@@ -226,23 +198,13 @@ export async function actorHint(
   const exact = matches.filter((c) => normalize(c.title) === normalize(movieTitle));
   const candidates = (exact.length ? exact : matches).slice(0, 4);
 
+  const excluded = new Set(excludeActorIds);
   for (const cand of candidates) {
     const cast: CastMember[] = await getTitleCast(cand.id, cand.mediaType);
-    const excluded = new Set(excludeActorIds);
-    const others = cast
+    const pick = cast
       .filter((m) => m.id !== currentActorId && m.name)
-      .sort((a, b) => a.order - b.order);
-    if (others.length === 0) continue;
-
-    const ranked = await Promise.all(
-      others.slice(0, Math.min(12, others.length)).map(async (member) => ({
-        member,
-        score: await getPersonBoxOfficeHintScore(member.id)
-      }))
-    );
-    ranked.sort((a, b) => b.score - a.score || a.member.order - b.member.order);
-
-    const pick = ranked.find(({ member }) => !excluded.has(member.id))?.member;
+      .sort((a, b) => a.order - b.order)
+      .find((member) => !excluded.has(member.id));
     if (!pick) continue;
 
     return {

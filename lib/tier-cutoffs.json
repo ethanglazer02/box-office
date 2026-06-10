@@ -1,0 +1,34 @@
+{
+  "generatedAt": "2026-06-10T03:21:07.532Z",
+  "note": "Absolute S/F gate for admitting live-fetched actors. See scripts/derive-tier-cutoffs.mjs.",
+  "scoring": {
+    "QUALIFY_VOTE_GTE": 200,
+    "QUALIFY_MAX_ORDER": 15
+  },
+  "cutoffs": {
+    "easy": {
+      "n": 234,
+      "fFloor": 67.78,
+      "fMedian": 111.53,
+      "sFloor": 35.93,
+      "sMedian": 67.17,
+      "sCeil": 116.38
+    },
+    "medium": {
+      "n": 630,
+      "fFloor": 36.09,
+      "fMedian": 65.14,
+      "sFloor": 7.44,
+      "sMedian": 20.65,
+      "sCeil": 43.49
+    },
+    "hard": {
+      "n": 69,
+      "fFloor": 39.23,
+      "fMedian": 64.17,
+      "sFloor": 3.4,
+      "sMedian": 7.99,
+      "sCeil": 17.19
+    }
+  }
+}

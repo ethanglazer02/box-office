@@ -37,8 +37,8 @@ const DIFFICULTIES: { id: Difficulty; label: string; blurb: string }[] = [
 
 type Mode = "movie" | "all";
 const MODES: { id: Mode; label: string }[] = [
-  { id: "all", label: "Movies + TV" },
-  { id: "movie", label: "Movies only" }
+  { id: "movie", label: "Movies only" },
+  { id: "all", label: "Movies + TV" }
 ];
 
 type Theme = "light" | "dark";
@@ -68,6 +68,28 @@ interface UndoSnapshot {
   hintsLeft: number;
   usedActorHints: Record<string, number[]>;
 }
+
+interface ShareFeedback {
+  text: string;
+  good: boolean;
+}
+
+interface SharePayload {
+  title: string;
+  text: string;
+  url: string;
+}
+
+const SHARE_TARGETS = [
+  { id: "x", label: "X", logo: "https://cdn.simpleicons.org/x/ffffff" },
+  { id: "facebook", label: "Facebook", logo: "https://cdn.simpleicons.org/facebook/ffffff" },
+  { id: "bluesky", label: "Bluesky", logo: "https://cdn.simpleicons.org/bluesky/ffffff" },
+  { id: "whatsapp", label: "WhatsApp", logo: "https://cdn.simpleicons.org/whatsapp/ffffff" },
+  { id: "telegram", label: "Telegram", logo: "https://cdn.simpleicons.org/telegram/ffffff" },
+  { id: "reddit", label: "Reddit", logo: "https://cdn.simpleicons.org/reddit/ffffff" },
+  { id: "messages", label: "Messages", logo: "https://cdn.simpleicons.org/imessage/ffffff" },
+  { id: "copy", label: "Copy link", logo: null }
+] as const;
 
 function MarqueeLogo() {
   return (
@@ -156,8 +178,11 @@ export default function Page() {
   const [status, setStatus] = useState<"playing" | "won">("playing");
   const [hintsLeft, setHintsLeft] = useState(3);
   const [hinting, setHinting] = useState(false);
-  const [difficulty, setDifficulty] = useState<Difficulty>("medium");
-  const [mode, setMode] = useState<Mode>("all");
+  const [activeHintType, setActiveHintType] = useState<"movie" | "actor" | null>(null);
+  const [movieHintFillSignal, setMovieHintFillSignal] = useState(0);
+  const [costarHintFillSignal, setCostarHintFillSignal] = useState(0);
+  const [difficulty, setDifficulty] = useState<Difficulty>("easy");
+  const [mode, setMode] = useState<Mode>("movie");
   const [theme, setTheme] = useState<Theme>(() =>
     typeof document !== "undefined" && document.documentElement.dataset.theme === "light"
       ? "light"
@@ -167,6 +192,7 @@ export default function Page() {
   const [zoomed, setZoomed] = useState<Person | null>(null);
   const [usedActorHints, setUsedActorHints] = useState<Record<string, number[]>>({});
   const [undoHistory, setUndoHistory] = useState<UndoSnapshot[]>([]);
+  const [shareFeedback, setShareFeedback] = useState<ShareFeedback | null>(null);
   const settingsRef = useRef<HTMLDivElement | null>(null);
 
   // Memoized so the Autocomplete effect doesn't re-fire on unrelated re-renders.
@@ -177,6 +203,7 @@ export default function Page() {
   const stepsUsed = Math.max(0, chain.length - 1);
   const totalGross = chain.reduce((sum, l) => sum + (l.via?.revenue ?? 0), 0);
   const actorHintKey = current ? `${current.id}|${mode}|${normalizeHintKey(movie)}` : "";
+  const roundActorIds = chain.map((link) => link.actor.id);
 
   async function newGame(diff: Difficulty = difficulty, m: Mode = mode) {
     setLoading(true);
@@ -190,6 +217,7 @@ export default function Page() {
     setMode(m);
     setUsedActorHints({});
     setUndoHistory([]);
+    setShareFeedback(null);
     try {
       const res = await fetch(`/api/start?difficulty=${diff}&mode=${m}`);
       const data = await res.json();
@@ -217,9 +245,12 @@ export default function Page() {
 
   useEffect(() => {
     // Honor ?difficulty= from the homepage links on first load.
-    const p = new URLSearchParams(window.location.search).get("difficulty");
-    const start: Difficulty = p === "easy" || p === "medium" || p === "hard" ? p : "medium";
-    newGame(start, mode);
+    const params = new URLSearchParams(window.location.search);
+    const p = params.get("difficulty");
+    const modeParam = params.get("mode");
+    const start: Difficulty = p === "easy" || p === "medium" || p === "hard" ? p : "easy";
+    const startMode: Mode = modeParam === "movie" || modeParam === "all" ? modeParam : "movie";
+    newGame(start, startMode);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -323,6 +354,7 @@ export default function Page() {
       return;
     }
     setHinting(true);
+    setActiveHintType(type);
     try {
       const res = await fetch("/api/hint", {
         method: "POST",
@@ -332,7 +364,10 @@ export default function Page() {
           type,
           movieTitle: movie,
           mode,
-          excludeActorIds: type === "actor" ? (usedActorHints[actorHintKey] ?? []) : []
+          excludeActorIds:
+            type === "actor"
+              ? [...new Set([...roundActorIds, ...(usedActorHints[actorHintKey] ?? [])])]
+              : []
         })
       });
       const data = await res.json();
@@ -343,9 +378,13 @@ export default function Page() {
       }
       setUndoHistory((prev) => [...prev, snapshotState()]);
       // Drop the hint into the matching field and spend one hint.
-      if (type === "movie") setMovie(data.fill);
+      if (type === "movie") {
+        setMovie(data.fill);
+        setMovieHintFillSignal((n) => n + 1);
+      }
       else {
         setCostar(data.fill);
+        setCostarHintFillSignal((n) => n + 1);
         if (data.actorId) {
           setUsedActorHints((prev) => ({
             ...prev,
@@ -359,6 +398,87 @@ export default function Page() {
       setFeedback({ text: e.message || "Couldn't fetch a hint.", good: false });
     } finally {
       setHinting(false);
+      setActiveHintType(null);
+    }
+  }
+
+  async function shareWin() {
+    if (!target || chain.length === 0) return;
+    setShareFeedback(null);
+  }
+
+  function getSharePayload(): SharePayload | null {
+    if (!target || chain.length === 0) return null;
+
+    const startActor = chain[0].actor.name;
+    const difficultyLabel = DIFFICULTIES.find((entry) => entry.id === difficulty)?.label ?? "Medium";
+    const modeLabel = mode === "movie" ? "Movies only" : "Movies + TV";
+    const url = `${window.location.origin}/play?difficulty=${difficulty}&mode=${mode}`;
+    const pathTitles = chain
+      .slice(1)
+      .map((link) => link.via?.name)
+      .filter((title): title is string => Boolean(title));
+    const pathLine = pathTitles.length > 0 ? `\nPath: ${pathTitles.join(" → ")}` : "";
+    const text =
+      `🎬 Box Office Challenge\n` +
+      `${startActor} → ${target.name}\n` +
+      `${stepsUsed} ${stepsUsed === 1 ? "step" : "steps"} • ${money(totalGross)} path gross\n` +
+      `${difficultyLabel} • ${modeLabel}${pathLine}\n\n` +
+      `Can you beat my run?`;
+
+    return {
+      title: "Box Office Challenge",
+      text,
+      url
+    };
+  }
+
+  function openShareWindow(url: string) {
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  function handleShareTarget(targetName: string) {
+    const payload = getSharePayload();
+    if (!payload) return;
+
+    const encodedUrl = encodeURIComponent(payload.url);
+    const encodedText = encodeURIComponent(`${payload.text}\n${payload.url}`);
+    const encodedMessages = encodeURIComponent(`${payload.text}\n\n${payload.url}`);
+
+    try {
+      switch (targetName) {
+        case "x":
+          openShareWindow(`https://twitter.com/intent/tweet?text=${encodedText}`);
+          break;
+        case "facebook":
+          openShareWindow(`https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}&quote=${encodeURIComponent(payload.text)}`);
+          break;
+        case "bluesky":
+          openShareWindow(`https://bsky.app/intent/compose?text=${encodedText}`);
+          break;
+        case "whatsapp":
+          openShareWindow(`https://wa.me/?text=${encodedText}`);
+          break;
+        case "telegram":
+          openShareWindow(`https://t.me/share/url?url=${encodedUrl}&text=${encodeURIComponent(payload.text)}`);
+          break;
+        case "reddit":
+          openShareWindow(`https://www.reddit.com/submit?url=${encodedUrl}&title=${encodeURIComponent(payload.title)}`);
+          break;
+        case "messages":
+          window.location.href = `sms:&body=${encodedMessages}`;
+          break;
+        case "copy":
+          navigator.clipboard.writeText(payload.url);
+          setShareFeedback({ text: "Link copied to clipboard.", good: true });
+          return;
+        default:
+          return;
+      }
+
+      setShareFeedback({ text: "Share link opened.", good: true });
+    } catch {
+      setShareFeedback({ text: "Couldn't open that share option.", good: false });
     }
   }
 
@@ -372,9 +492,9 @@ export default function Page() {
           </span>
         </Link>
         <div className="topbar-actions">
-          <button type="button" className="btn btn-ghost btn-topbar" onClick={() => newGame()}>
-            New game
-          </button>
+            <button type="button" className="btn btn-ghost btn-topbar" onClick={() => newGame()}>
+                    New game
+                  </button>
           <div className="settings-anchor" ref={settingsRef}>
             <button
               type="button"
@@ -566,11 +686,36 @@ export default function Page() {
               </div>
             </div>
             <div className="b-actions">
-              <UndoButton disabled={undoHistory.length === 0} onClick={undoStep} />
               <button type="button" className="btn btn-primary" onClick={() => newGame()}>
                 New game
               </button>
             </div>
+            <div className="share-inline">
+              <div className="share-inline-label">Share your run</div>
+              <div className="share-inline-grid">
+                {SHARE_TARGETS.map((shareTarget) => (
+                  <button
+                    key={shareTarget.id}
+                    type="button"
+                    className={`share-pill share-pill-${shareTarget.id}`}
+                    onClick={() => handleShareTarget(shareTarget.id)}
+                  >
+                    {shareTarget.logo ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img className="share-pill-logo" src={shareTarget.logo} alt="" aria-hidden="true" />
+                    ) : shareTarget.id === "copy" ? null : (
+                      <span className="share-pill-mark" aria-hidden="true">
+                        ↗
+                      </span>
+                    )}
+                    <span className="share-pill-label">{shareTarget.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            {shareFeedback && (
+              <div className={`share-flash ${shareFeedback.good ? "ok" : "no"}`}>{shareFeedback.text}</div>
+            )}
           </div>
         </div>
       )}
@@ -584,6 +729,7 @@ export default function Page() {
                 value={movie}
                 onChange={setMovie}
                 fetchSuggestions={titleFetch}
+                suppressNextOpenSignal={movieHintFillSignal}
                 placeholder={
                   mode === "movie"
                     ? `A movie ${current?.name ?? ""} is in`
@@ -598,6 +744,7 @@ export default function Page() {
                 value={costar}
                 onChange={setCostar}
                 fetchSuggestions={actorFetch}
+                suppressNextOpenSignal={costarHintFillSignal}
                 placeholder="Another actor from that title"
               />
             </div>
@@ -620,7 +767,14 @@ export default function Page() {
               onClick={() => requestHint("movie")}
               title="Reveal a movie the current actor is in"
             >
-              💡 Movie
+              {activeHintType === "movie" ? (
+                <>
+                  <span className="hint-spinner" aria-hidden="true" />
+                  Loading…
+                </>
+              ) : (
+                "💡 Movie"
+              )}
             </button>
             <button
               type="button"
@@ -633,7 +787,14 @@ export default function Page() {
                   : "Fill in a movie first to unlock this"
               }
             >
-              💡 Co-star
+              {activeHintType === "actor" ? (
+                <>
+                  <span className="hint-spinner" aria-hidden="true" />
+                  Loading…
+                </>
+              ) : (
+                "💡 Co-star"
+              )}
             </button>
           </div>
           {feedback && (
