@@ -30,8 +30,7 @@ export default function Home() {
         </h1>
         <p className="tagline">A movie-connection game</p>
         <p className="hook">
-          Connect two actors, then keep your box office total low by finding nicher, less obvious
-          connections.
+          Connect actors through shared films and chase the lowest box office total with niche picks.
         </p>
         <p className="hook">
           Anyone can burn through blockbusters. The best runs prove you know the deep cuts.
