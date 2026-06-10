@@ -3,19 +3,24 @@ import { getTierActors, maybeExpand, type Difficulty, type PoolActor } from "@/l
 
 // Start/target pairs are drawn from a tiered pool (built offline by
 // scripts/build-actor-pool.mjs, grown over time by live expansion). Each request
-// just samples a diverse, non-repeating pair from the right tier — no blocking
+// just samples a random, non-repeating pair from the right tier — no blocking
 // TMDB calls, so the route stays instant; any expansion runs after the response.
 export const dynamic = "force-dynamic";
 
 type Mode = "movie" | "all";
 
 const RECENT_ACTOR_COOKIE = "sd_recent_actor_ids";
+const RECENT_MATCHUP_COOKIE = "sd_recent_matchup_keys";
 const RECENT_ACTOR_LIMIT = 80;
-const MAX_ATTEMPTS = 200;
+const RECENT_MATCHUP_LIMIT = 160;
 const MIN_POOL_SIZE = 12; // below this we stop honoring the cooldown filter
 // On medium, sometimes pair one easy actor with one medium actor to ease the
 // jump. Never two easy at once — the mixed pair always keeps one medium side.
 const MEDIUM_EASY_MIX_CHANCE = 0.3;
+// On hard, keep most pairings fully hard, but occasionally blend in one actor
+// from an easier tier so the pool doesn't feel too narrow.
+const HARD_MEDIUM_MIX_CHANCE = 0.2;
+const HARD_EASY_MIX_CHANCE = 0.06;
 // When a tier has fewer than this many unseen actors left, kick off a background
 // crawl to discover fresh, equally-recognizable faces for next time.
 const FRESH_LOW_WATERMARK = 40;
@@ -25,24 +30,58 @@ function parseDifficulty(raw: string | null): Difficulty {
 }
 
 function readRecentActorIds(req: Request): number[] {
-  const cookieHeader = req.headers.get("cookie") || "";
-  const match = cookieHeader.match(new RegExp(`${RECENT_ACTOR_COOKIE}=([^;]+)`));
+  const match = readCookie(req, RECENT_ACTOR_COOKIE);
   if (!match) return [];
   try {
-    const parsed = JSON.parse(decodeURIComponent(match[1]));
+    const parsed = JSON.parse(match);
     return Array.isArray(parsed) ? parsed.map((v) => Number(v)).filter(Boolean) : [];
   } catch {
     return [];
   }
 }
 
+function readRecentMatchupKeys(req: Request): string[] {
+  const match = readCookie(req, RECENT_MATCHUP_COOKIE);
+  if (!match) return [];
+  try {
+    const parsed = JSON.parse(match);
+    return Array.isArray(parsed) ? parsed.map((v) => String(v)).filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
 function writeRecentActorIds(res: NextResponse, actorIds: number[]) {
-  res.cookies.set(RECENT_ACTOR_COOKIE, JSON.stringify(actorIds.slice(0, RECENT_ACTOR_LIMIT)), {
+  res.cookies.set(RECENT_ACTOR_COOKIE, JSON.stringify(unique(actorIds).slice(0, RECENT_ACTOR_LIMIT)), {
     httpOnly: false,
     sameSite: "lax",
     maxAge: 60 * 60 * 24 * 14,
     path: "/",
   });
+}
+
+function writeRecentMatchupKeys(res: NextResponse, matchupKeys: string[]) {
+  res.cookies.set(RECENT_MATCHUP_COOKIE, JSON.stringify(unique(matchupKeys).slice(0, RECENT_MATCHUP_LIMIT)), {
+    httpOnly: false,
+    sameSite: "lax",
+    maxAge: 60 * 60 * 24 * 14,
+    path: "/",
+  });
+}
+
+function readCookie(req: Request, name: string): string | null {
+  const cookieHeader = req.headers.get("cookie") || "";
+  const match = cookieHeader.match(new RegExp(`${name}=([^;]+)`));
+  if (!match) return null;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return null;
+  }
+}
+
+function unique<T>(items: T[]): T[] {
+  return [...new Set(items)];
 }
 
 function toPerson(a: PoolActor) {
@@ -62,77 +101,72 @@ function sharesTitle(a: PoolActor, b: PoolActor, mode: Mode): boolean {
   return other.some((id) => keys.has(id));
 }
 
-// Higher = more diverse. Reward non-male representation and differing ethnicities
-// so output isn't two white men by default.
-function diversityScore(a: PoolActor, b: PoolActor): number {
-  const nonMale = (g: number) => g === 1 || g === 3;
-  let score = 0;
-  if (nonMale(a.gender) && nonMale(b.gender)) score += 3;
-  else if (nonMale(a.gender) || nonMale(b.gender)) score += 2;
-
-  const neutral = (t: string) =>
-    t === "White" || t === "US/Unknown" || t === "UK/Unknown" ||
-    t === "Anglo/Unknown" || t === "Unspecified";
-  if (a.ethnicityTag !== b.ethnicityTag) score += 1;
-  if (!neutral(a.ethnicityTag) || !neutral(b.ethnicityTag)) score += 1;
-  return score;
+function pairKey(a: PoolActor, b: PoolActor): string {
+  return a.id < b.id ? `${a.id}:${b.id}` : `${b.id}:${a.id}`;
 }
 
-function pickTwoDistinct(arr: PoolActor[]): [PoolActor, PoolActor] | null {
-  if (arr.length < 2) return null;
-  const i = Math.floor(Math.random() * arr.length);
-  let j = Math.floor(Math.random() * arr.length);
-  if (j === i) j = (j + 1) % arr.length;
-  return [arr[i], arr[j]];
+function randomInt(max: number): number {
+  return Math.floor(Math.random() * max);
+}
+
+function shuffleOrder(pair: [PoolActor, PoolActor]): [PoolActor, PoolActor] {
+  return Math.random() < 0.5 ? pair : [pair[1], pair[0]];
+}
+
+function chooseRandom<T>(items: T[]): T | null {
+  if (items.length === 0) return null;
+  return items[randomInt(items.length)];
 }
 
 function choosePair(
   candidates: PoolActor[],
-  mode: Mode
+  mode: Mode,
+  recentMatchups: Set<string>
 ): [PoolActor, PoolActor] | null {
-  let best: { pair: [PoolActor, PoolActor]; score: number } | null = null;
-  let fallback: [PoolActor, PoolActor] | null = null;
+  const unseen: [PoolActor, PoolActor][] = [];
+  const all: [PoolActor, PoolActor][] = [];
 
-  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    const pair = pickTwoDistinct(candidates);
-    if (!pair) break;
-    fallback = fallback ?? pair;
-    const [a, b] = pair;
-    if (sharesTitle(a, b, mode)) continue; // already linked = trivial puzzle
-
-    const score = diversityScore(a, b) + Math.random() * 0.5; // jitter breaks ties
-    if (!best || score > best.score) best = { pair, score };
-    if (best.score >= 4) break; // good enough; stop early
+  for (let i = 0; i < candidates.length; i++) {
+    for (let j = i + 1; j < candidates.length; j++) {
+      const a = candidates[i];
+      const b = candidates[j];
+      if (sharesTitle(a, b, mode)) continue; // already linked = trivial puzzle
+      const pair: [PoolActor, PoolActor] = [a, b];
+      all.push(pair);
+      if (!recentMatchups.has(pairKey(a, b))) unseen.push(pair);
+    }
   }
 
-  return best?.pair ?? fallback;
+  const chosen = chooseRandom(unseen) ?? chooseRandom(all);
+  return chosen ? shuffleOrder(chosen) : null;
 }
 
-// Pick one actor from each pool (e.g. one easy + one medium). Guarantees the
-// two sides come from different tiers, so a mixed pair never has two easy actors.
 function choosePairAcross(
   poolA: PoolActor[],
   poolB: PoolActor[],
-  mode: Mode
+  mode: Mode,
+  recentMatchups: Set<string>
 ): [PoolActor, PoolActor] | null {
   if (poolA.length === 0 || poolB.length === 0) return null;
-  let best: { pair: [PoolActor, PoolActor]; score: number } | null = null;
-  let fallback: [PoolActor, PoolActor] | null = null;
+  const unseen: [PoolActor, PoolActor][] = [];
+  const all: [PoolActor, PoolActor][] = [];
+  const seenKeys = new Set<string>();
 
-  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    const a = poolA[Math.floor(Math.random() * poolA.length)];
-    const b = poolB[Math.floor(Math.random() * poolB.length)];
-    if (a.id === b.id) continue;
-    const pair: [PoolActor, PoolActor] = [a, b];
-    fallback = fallback ?? pair;
-    if (sharesTitle(a, b, mode)) continue; // already linked = trivial puzzle
-
-    const score = diversityScore(a, b) + Math.random() * 0.5; // jitter breaks ties
-    if (!best || score > best.score) best = { pair, score };
-    if (best.score >= 4) break; // good enough; stop early
+  for (const a of poolA) {
+    for (const b of poolB) {
+      if (a.id === b.id) continue;
+      const key = pairKey(a, b);
+      if (seenKeys.has(key)) continue;
+      seenKeys.add(key);
+      const pair: [PoolActor, PoolActor] = [a, b];
+      if (sharesTitle(a, b, mode)) continue; // already linked = trivial puzzle
+      all.push(pair);
+      if (!recentMatchups.has(key)) unseen.push(pair);
+    }
   }
 
-  return best?.pair ?? fallback;
+  const chosen = chooseRandom(unseen) ?? chooseRandom(all);
+  return chosen ? shuffleOrder(chosen) : null;
 }
 
 export async function GET(req: Request) {
@@ -141,6 +175,7 @@ export async function GET(req: Request) {
     const difficulty = parseDifficulty(url.searchParams.get("difficulty"));
     const mode: Mode = url.searchParams.get("mode") === "movie" ? "movie" : "all";
     const recent = new Set(readRecentActorIds(req));
+    const recentMatchups = new Set(readRecentMatchupKeys(req));
 
     const cooledTier = (t: Difficulty) => {
       const tier = getTierActors(t);
@@ -150,13 +185,18 @@ export async function GET(req: Request) {
 
     const candidates = cooledTier(difficulty);
 
-    // On medium, occasionally swap one side for an easy actor to soften the
-    // difficulty. The other side stays medium, so we never get two easy actors.
-    const mixEasy =
-      difficulty === "medium" && Math.random() < MEDIUM_EASY_MIX_CHANCE;
-    const pair = mixEasy
-      ? choosePairAcross(cooledTier("easy"), candidates, mode)
-      : choosePair(candidates, mode);
+    // Mixed-tier pulls always keep at least one actor from the selected
+    // difficulty, so medium never becomes easy/easy and hard never becomes
+    // medium/medium or easy/easy.
+    const hardRoll = Math.random();
+    const pair =
+      difficulty === "medium" && Math.random() < MEDIUM_EASY_MIX_CHANCE
+        ? choosePairAcross(cooledTier("easy"), candidates, mode, recentMatchups)
+        : difficulty === "hard" && hardRoll < HARD_EASY_MIX_CHANCE
+          ? choosePairAcross(cooledTier("easy"), candidates, mode, recentMatchups)
+          : difficulty === "hard" && hardRoll < HARD_EASY_MIX_CHANCE + HARD_MEDIUM_MIX_CHANCE
+            ? choosePairAcross(cooledTier("medium"), candidates, mode, recentMatchups)
+            : choosePair(candidates, mode, recentMatchups);
     if (!pair) {
       return NextResponse.json(
         { error: "Actor pool is empty for this difficulty. Rebuild the pool." },
@@ -172,6 +212,7 @@ export async function GET(req: Request) {
       mode,
     });
     writeRecentActorIds(response, [start.id, target.id, ...recent]);
+    writeRecentMatchupKeys(response, [pairKey(start, target), ...recentMatchups]);
 
     // If this tier is running low on unseen faces, discover more after the
     // response ships. maybeExpand self-throttles, so this is cheap to call.

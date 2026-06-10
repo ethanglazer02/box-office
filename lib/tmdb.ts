@@ -42,7 +42,18 @@ export interface TitleLite {
 const GLOBAL_MOVIE_RECOGNITION_FLOOR = 2500;
 const actingCreditsCache = new Map<number, Promise<CreditTitle[]>>();
 const titleCastCache = new Map<string, Promise<CastMember[]>>();
-const movieRevenueCache = new Map<number, Promise<number>>();
+const titleValueCache = new Map<string, Promise<number>>();
+
+// TV has no real box office. We synthesize a comparable "gross" from signals
+// TMDB returns on /tv/{id}: audience size (vote_count) scaled by how much content
+// the show ran (episodes, sqrt-damped so long-running soaps don't explode past
+// blockbusters). The constant is eyeball-calibrated so a mega-hit lands in
+// blockbuster range and a one-season niche show lands in the low millions:
+//   Game of Thrones (~22k votes, 73 eps)  → ~$1.2B
+//   Breaking Bad     (~13k votes, 62 eps) → ~$650M
+//   The Office       (~4k votes, 201 eps) → ~$360M
+//   a 1-season niche (~300 votes, 8 eps)  → ~$5M
+const TV_VALUE_CONSTANT = 6400;
 
 function memoizePromise<K, V>(
   cache: Map<K, Promise<V>>,
@@ -284,14 +295,23 @@ export async function getTitleCast(
   });
 }
 
-// Worldwide box-office gross for a movie (0 for TV or when TMDB has no data).
-export async function getMovieRevenue(
+// A box-office-comparable value for any title. Movies use TMDB's real worldwide
+// gross; TV uses a synthesized "gross" (see TV_VALUE_CONSTANT) since no real one
+// exists. Returns 0 when TMDB has no usable data.
+export async function getTitleValue(
   id: number,
   mediaType: "movie" | "tv"
 ): Promise<number> {
-  if (mediaType !== "movie") return 0;
-  return memoizePromise(movieRevenueCache, id, async () => {
+  return memoizePromise(titleValueCache, `${mediaType}:${id}`, async () => {
     try {
+      if (mediaType === "tv") {
+        const d = await tmdb<{ vote_count?: number; number_of_episodes?: number }>(
+          `/tv/${id}`
+        );
+        const votes = d.vote_count || 0;
+        const episodes = Math.max(1, d.number_of_episodes || 1);
+        return Math.round(votes * Math.sqrt(episodes) * TV_VALUE_CONSTANT);
+      }
       const d = await tmdb<{ revenue?: number }>(`/movie/${id}`);
       return d.revenue || 0;
     } catch {

@@ -54,8 +54,13 @@ gimme). Adult/softcore performers are filtered out via a vote-count threshold.
 Every movie you link through has a real worldwide gross (pulled from TMDB per
 verified title). The game tallies it as you go — a running **🍿 Box office along
 your path** counter, per-link grosses in the chain, and a final total on the win
-screen ("Your path grossed $4.2B"). TV links contribute $0, so this number means
-the most in Movies-only mode.
+screen ("Your path grossed $4.2B").
+
+TV shows have no real box office, so each TV link contributes a **synthesized,
+box-office-comparable value** instead: its TMDB audience size (`vote_count`)
+scaled by how much content it ran (episodes, sqrt-damped so long-running shows
+don't dwarf blockbusters), tuned so a mega-hit lands in blockbuster range. See
+`TV_VALUE_CONSTANT` in `lib/tmdb.ts` to recalibrate.
 
 ## Setup
 

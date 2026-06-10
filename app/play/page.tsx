@@ -80,6 +80,13 @@ interface SharePayload {
   url: string;
 }
 
+interface SharedRound {
+  difficulty: Difficulty;
+  mode: Mode;
+  startId: number;
+  targetId: number;
+}
+
 const SHARE_TARGETS = [
   { id: "x", label: "X", logo: "https://cdn.simpleicons.org/x/ffffff" },
   { id: "facebook", label: "Facebook", logo: "https://cdn.simpleicons.org/facebook/ffffff" },
@@ -148,6 +155,25 @@ function normalizeHintKey(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+function readPersonId(prefix: "start" | "target", params: URLSearchParams): number | null {
+  const id = Number(params.get(`${prefix}Id`));
+  return Number.isFinite(id) && id > 0 ? id : null;
+}
+
+function readSharedRound(params: URLSearchParams): SharedRound | null {
+  const difficultyParam = params.get("difficulty");
+  const modeParam = params.get("mode");
+  const difficulty: Difficulty =
+    difficultyParam === "easy" || difficultyParam === "medium" || difficultyParam === "hard"
+      ? difficultyParam
+      : "easy";
+  const mode: Mode = modeParam === "movie" || modeParam === "all" ? modeParam : "movie";
+  const startId = readPersonId("start", params);
+  const targetId = readPersonId("target", params);
+  if (!startId || !targetId || startId === targetId) return null;
+  return { difficulty, mode, startId, targetId };
+}
+
 function Avatar({ person, onZoom }: { person: Person; onZoom?: (p: Person) => void }) {
   if (person.profilePath) {
     // eslint-disable-next-line @next/next/no-img-element
@@ -205,6 +231,42 @@ export default function Page() {
   const actorHintKey = current ? `${current.id}|${mode}|${normalizeHintKey(movie)}` : "";
   const roundActorIds = chain.map((link) => link.actor.id);
 
+  const syncGameUrl = useCallback((start: Person, nextTarget: Person, diff: Difficulty, nextMode: Mode) => {
+    const params = new URLSearchParams();
+    params.set("difficulty", diff);
+    params.set("mode", nextMode);
+    params.set("startId", String(start.id));
+    params.set("targetId", String(nextTarget.id));
+    window.history.replaceState({}, "", `/play?${params.toString()}`);
+  }, []);
+
+  const hydrateSharedRound = useCallback(async (sharedRound: SharedRound) => {
+    const res = await fetch(`/api/people?ids=${sharedRound.startId},${sharedRound.targetId}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Failed to load shared matchup.");
+
+    const people = Array.isArray(data.results) ? data.results : [];
+    const start = people.find((person: Person) => person.id === sharedRound.startId) ?? null;
+    const nextTarget = people.find((person: Person) => person.id === sharedRound.targetId) ?? null;
+    if (!start || !nextTarget) throw new Error("Shared matchup is no longer available.");
+
+    setDifficulty(sharedRound.difficulty);
+    setMode(sharedRound.mode);
+    setTarget(nextTarget);
+    setChain([{ actor: start, via: null }]);
+    setError(null);
+    setFeedback(null);
+    setStatus("playing");
+    setMovie("");
+    setCostar("");
+    setHintsLeft(3);
+    setUsedActorHints({});
+    setUndoHistory([]);
+    setShareFeedback(null);
+    setLoading(false);
+    syncGameUrl(start, nextTarget, sharedRound.difficulty, sharedRound.mode);
+  }, [syncGameUrl]);
+
   async function newGame(diff: Difficulty = difficulty, m: Mode = mode) {
     setLoading(true);
     setError(null);
@@ -224,6 +286,7 @@ export default function Page() {
       if (!res.ok) throw new Error(data.error || "Failed to start game.");
       setTarget(data.target);
       setChain([{ actor: data.start, via: null }]);
+      syncGameUrl(data.start, data.target, diff, m);
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -244,15 +307,38 @@ export default function Page() {
   }
 
   useEffect(() => {
-    // Honor ?difficulty= from the homepage links on first load.
+    let cancelled = false;
     const params = new URLSearchParams(window.location.search);
-    const p = params.get("difficulty");
+    const sharedRound = readSharedRound(params);
+    if (sharedRound) {
+      void (async () => {
+        try {
+          await hydrateSharedRound(sharedRound);
+        } catch (e: any) {
+          if (cancelled) return;
+          setError(e.message || "Failed to load shared matchup.");
+          setLoading(false);
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    // Honor ?difficulty= from the homepage links on first load.
+    const difficultyParam = params.get("difficulty");
     const modeParam = params.get("mode");
-    const start: Difficulty = p === "easy" || p === "medium" || p === "hard" ? p : "easy";
+    const startDifficulty: Difficulty =
+      difficultyParam === "easy" || difficultyParam === "medium" || difficultyParam === "hard"
+        ? difficultyParam
+        : "easy";
     const startMode: Mode = modeParam === "movie" || modeParam === "all" ? modeParam : "movie";
-    newGame(start, startMode);
+    newGame(startDifficulty, startMode);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrateSharedRound]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -410,21 +496,21 @@ export default function Page() {
   function getSharePayload(): SharePayload | null {
     if (!target || chain.length === 0) return null;
 
-    const startActor = chain[0].actor.name;
+    const startActor = chain[0].actor;
     const difficultyLabel = DIFFICULTIES.find((entry) => entry.id === difficulty)?.label ?? "Medium";
     const modeLabel = mode === "movie" ? "Movies only" : "Movies + TV";
-    const url = `${window.location.origin}/play?difficulty=${difficulty}&mode=${mode}`;
-    const pathTitles = chain
-      .slice(1)
-      .map((link) => link.via?.name)
-      .filter((title): title is string => Boolean(title));
-    const pathLine = pathTitles.length > 0 ? `\nPath: ${pathTitles.join(" → ")}` : "";
+    const params = new URLSearchParams();
+    params.set("difficulty", difficulty);
+    params.set("mode", mode);
+    params.set("startId", String(startActor.id));
+    params.set("targetId", String(target.id));
+    const url = `${window.location.origin}/play?${params.toString()}`;
     const text =
       `🎬 Box Office Challenge\n` +
-      `${startActor} → ${target.name}\n` +
+      `${startActor.name} → ${target.name}\n` +
       `${stepsUsed} ${stepsUsed === 1 ? "step" : "steps"} • ${money(totalGross)} path gross\n` +
-      `${difficultyLabel} • ${modeLabel}${pathLine}\n\n` +
-      `Can you beat my run?`;
+      `${difficultyLabel} • ${modeLabel}\n\n` +
+      `Think you know nicher movies? Beat my run with a lower box office path.`;
 
     return {
       title: "Box Office Challenge",
@@ -724,7 +810,7 @@ export default function Page() {
         <form className="panel" onSubmit={submitGuess}>
           <div className="fields">
             <div className="field">
-              <label>Movie or show</label>
+              <label>{mode === "movie" ? "Movie" : "Movie or show"}</label>
               <Autocomplete
                 value={movie}
                 onChange={setMovie}
@@ -765,13 +851,19 @@ export default function Page() {
               className="hint-btn"
               disabled={hinting || hintsLeft <= 0}
               onClick={() => requestHint("movie")}
-              title="Reveal a movie the current actor is in"
+              title={
+                mode === "all"
+                  ? "Reveal a movie or TV show the current actor is in"
+                  : "Reveal a movie the current actor is in"
+              }
             >
               {activeHintType === "movie" ? (
                 <>
                   <span className="hint-spinner" aria-hidden="true" />
                   Loading…
                 </>
+              ) : mode === "all" ? (
+                "💡 Movie / TV show"
               ) : (
                 "💡 Movie"
               )}

@@ -1,7 +1,7 @@
 import {
   getActingCredits,
   getTitleCast,
-  getMovieRevenue,
+  getTitleValue,
   CreditTitle,
   CastMember
 } from "./tmdb";
@@ -129,7 +129,7 @@ export async function validateGuess(params: {
     if (!costar) continue;
 
     const won = costar.id === targetActorId;
-    const revenue = await getMovieRevenue(cand.id, cand.mediaType);
+    const revenue = await getTitleValue(cand.id, cand.mediaType);
     return {
       valid: true,
       won,
