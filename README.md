@@ -1,120 +1,76 @@
-# 🎬 Box Office
+<p align="center">
+  <img src="public/box-office-logo.png" alt="Box Office" width="120">
+</p>
 
-Connect two actors through the movies and TV shows they share, then try to keep both
-your path length and total box office as low as possible.
+<h1 align="center">Box Office</h1>
 
-The twist: at each step you must name **both** a title the current actor appears in
-**and** a co-star from that title, at the same time. The app verifies both against
-real TMDB cast data, so you can't just scroll through someone's filmography. The
-co-star you name becomes your next actor; reach the target to win.
+<p align="center">Connect two actors through the films and TV they share.</p>
 
-## International films + guaranteed-solvable puzzles
+## What it is
 
-Films **from anywhere** count as connections — the Korean *Parasite*, French cinema,
-anime, all of it — so there's diversity in the titles you can link through.
+You're given a starting actor and a target actor. Your job is to link them through
+the people they've worked with. Every guess is checked against real TMDB cast data,
+so you can't bluff your way through a filmography. The connections have to be real.
 
-The risk with foreign films is a dead end: an actor whose entire filmography is, say,
-all-Korean-cast films would be impossible to *reach* from a Hollywood start. We avoid
-that not by banning foreign films, but by only ever choosing **start/target actors who
-have a "bridge"** — i.e. at least one notable English-language credit (this falls out
-of the fame banding below, which scores actors by their biggest English-language role).
-That guarantees every endpoint connects into the densely-linked mainstream graph, so a
-path always exists. International actors with crossover credits (e.g. Lee Byung-hun)
-can still be endpoints; pure-foreign-only actors can't.
+## How to play
 
-## Movies-only vs Movies + TV
+1. You see the **current actor** and the **target** you're trying to reach.
+2. Name a **title** the current actor is in, and a **co-star** from that title, both
+   at once. The co-star can't be the current actor.
+3. If both check out, that co-star becomes your new current actor.
+4. Repeat until your co-star *is* the target. That's a win.
 
-A toggle at the top switches between **Movies + TV** (TV shows count as connections
-too) and **Movies only** (TV doesn't count for guesses, hints, the title autocomplete,
-or the starting pair). Switching either this or the difficulty starts a fresh game,
-since the start/target pairing depends on both.
+Spelling is forgiving: accents and punctuation don't matter, a leading "the/a/an" is
+optional, and a co-star's last name usually works. Stuck? You get **3 hints**: one
+reveals a title the actor is in, the other reveals a co-star once you've typed a title.
 
-## Difficulty modes
+## Settings
 
-Pick **Easy / Medium / Hard** at the top of the game — it controls how famous the
-start and target actors are:
+- **Movies only / Movies + TV**: whether TV shows count as connections. Switching
+  it starts a fresh game.
+- **Easy / Medium / Hard**: how famous the two actors are, from household names down
+  to "that person from that one movie." Also restarts the game.
 
-- **Easy** — a curated list of household names.
-- **Medium** — well-known but not A-list (think Winona Ryder, Sam Elliott).
-- **Hard** — recognizable C-listers / character actors (think Jennifer Love Hewitt,
-  Elisha Cuthbert), not obscure deep cuts.
+## Scoring
 
-Difficulty is driven by a **fame score** rather than raw TMDB popularity (which is
-noisy and gameable). The score is the vote count of a person's biggest
-*English-language* credit — a free signal (it's already in the popularity payload)
-that both measures recognizability and, via a ceiling, keeps superstars out of the
-harder tiers so they stay recognizable without being household names.
-
-Whatever the mode, the pair is guaranteed to be two real actors with enough credits
-to be connectable, and never two who already share a movie (that'd be a one-move
-gimme). Adult/softcore performers are filtered out via a vote-count threshold.
-
-## Box-office tally
-
-Every movie you link through has a real worldwide gross (pulled from TMDB per
-verified title). The game tallies it as you go — a running **🍿 Box office along
-your path** counter, per-link grosses in the chain, and a final total on the win
-screen ("Your path grossed $4.2B").
-
-TV shows have no real box office, so each TV link contributes a **synthesized,
-box-office-comparable value** instead: its TMDB audience size (`vote_count`)
-scaled by how much content it ran (episodes, sqrt-damped so long-running shows
-don't dwarf blockbusters), tuned so a mega-hit lands in blockbuster range. See
-`TV_VALUE_CONSTANT` in `lib/tmdb.ts` to recalibrate.
+A running box-office counter tracks the total gross of every title in your path, with
+a final tally on the win screen. The goal is a short path *and* a low total. Films use
+their real worldwide gross; TV has no box office, so it gets a comparable stand-in
+value derived from its audience and run length (see `TV_VALUE_CONSTANT` in
+`lib/tmdb.ts`).
 
 ## Setup
 
-1. **Get a free TMDB API key.** Create an account at
-   [themoviedb.org](https://www.themoviedb.org/signup), then go to
-   [Settings → API](https://www.themoviedb.org/settings/api) and request a key.
-   Use the **v3 API Key** (the shorter one, not the long bearer token).
+1. Grab a free TMDB API key: sign up at [themoviedb.org](https://www.themoviedb.org/signup),
+   then go to [Settings → API](https://www.themoviedb.org/settings/api) and copy the
+   **v3 API Key** (the short one).
 
-2. **Add it to the environment.** Create a file named `.env.local` in this folder:
+2. Create `.env.local` in this folder:
 
    ```
    TMDB_API_KEY=your_v3_api_key_here
    ```
 
-3. **Install and run:**
+3. Install and run:
 
    ```bash
    npm install
    npm run dev
    ```
 
-   Open http://localhost:3000.
+   Then open http://localhost:3000.
 
-## How a move is validated
-
-1. We look up the **current actor's own credit list** and find the title you typed.
-   Matching it there proves the actor is in it — no ambiguity about which film.
-2. We pull that title's **full cast** and confirm the **co-star** you named is in it.
-3. If the co-star is the target, you win. Otherwise the co-star becomes the new
-   current actor and you keep going.
-
-Matching is forgiving: punctuation/accents are ignored, a leading "the/a/an" is
-dropped, and a co-star's last name usually works.
-
-## Project layout
+## Layout
 
 | Path | What it does |
 | --- | --- |
-| `lib/tmdb.ts` | Server-side TMDB client. The API key never reaches the browser. |
-| `lib/game.ts` | The validation logic (the core game rule). |
-| `app/api/start` | Picks a random start + target pair from a pool of well-connected stars. |
+| `lib/tmdb.ts` | TMDB client. The API key stays server-side. |
+| `lib/game.ts` | Move validation, the core game rule. |
+| `app/api/start` | Picks a connectable start + target pair. |
 | `app/api/guess` | Validates one move. |
-| `app/api/actor-search` | Actor lookup (for a future "pick your own actors" mode). |
-| `app/page.tsx` | The game UI. |
+| `app/play/page.tsx` | The game UI. |
 
 ## Deploying
 
-Push to GitHub and import into [Vercel](https://vercel.com). Add `TMDB_API_KEY` as
-an environment variable in the project settings. The API routes keep your key
-server-side.
-
-## Ideas to extend
-
-- Let players choose their own start/target with the actor-search endpoint.
-- Block reusing the same title or actor twice.
-- A daily challenge with a fixed pair and a shareable score.
-- Hint system (reveal a shared title) at the cost of a step.
+Push to GitHub and import into [Vercel](https://vercel.com). Add `TMDB_API_KEY` as an
+environment variable in the project settings; the API routes keep it server-side.
