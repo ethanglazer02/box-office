@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Autocomplete, { Suggestion } from "./Autocomplete";
 import SiteFooter from "../SiteFooter";
 
@@ -31,14 +31,20 @@ async function fetchActorSuggestions(q: string): Promise<Suggestion[]> {
 type Difficulty = "easy" | "medium" | "hard";
 const DIFFICULTIES: { id: Difficulty; label: string; blurb: string }[] = [
   { id: "easy", label: "Easy", blurb: "household names" },
-  { id: "medium", label: "Medium", blurb: "lesser-known faces" },
-  { id: "hard", label: "Hard", blurb: "deep cuts" }
+  { id: "medium", label: "Medium", blurb: "recognizable faces" },
+  { id: "hard", label: "Hard", blurb: "that person from that one movie" }
 ];
 
 type Mode = "movie" | "all";
 const MODES: { id: Mode; label: string }[] = [
   { id: "all", label: "Movies + TV" },
   { id: "movie", label: "Movies only" }
+];
+
+type Theme = "light" | "dark";
+const THEMES: { id: Theme; label: string }[] = [
+  { id: "dark", label: "Dark" },
+  { id: "light", label: "Light" }
 ];
 
 interface Person {
@@ -64,7 +70,40 @@ interface UndoSnapshot {
 }
 
 function MarqueeLogo() {
-  return <span className="brand-mark">BO</span>;
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src="/box-office-logo.png" alt="" className="brand-logo" aria-hidden="true" />
+  );
+}
+
+function UndoButton({
+  disabled,
+  onClick
+}: {
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="btn btn-undo"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label="Undo last step"
+      title="Undo last step"
+    >
+      <svg viewBox="0 0 24 24" className="undo-icon" aria-hidden="true">
+        <path
+          d="M9 7L5 11L9 15"
+          className="undo-icon-arrow"
+        />
+        <path
+          d="M5.5 11H13.25C16.15 11 18.5 13.35 18.5 16.25C18.5 19.15 16.15 21.5 13.25 21.5H10.75"
+          className="undo-icon-arrow"
+        />
+      </svg>
+    </button>
+  );
 }
 
 function PersonInitials(name: string) {
@@ -119,10 +158,16 @@ export default function Page() {
   const [hinting, setHinting] = useState(false);
   const [difficulty, setDifficulty] = useState<Difficulty>("medium");
   const [mode, setMode] = useState<Mode>("all");
+  const [theme, setTheme] = useState<Theme>(() =>
+    typeof document !== "undefined" && document.documentElement.dataset.theme === "light"
+      ? "light"
+      : "dark"
+  );
   const [showSettings, setShowSettings] = useState(false);
   const [zoomed, setZoomed] = useState<Person | null>(null);
   const [usedActorHints, setUsedActorHints] = useState<Record<string, number[]>>({});
   const [undoHistory, setUndoHistory] = useState<UndoSnapshot[]>([]);
+  const settingsRef = useRef<HTMLDivElement | null>(null);
 
   // Memoized so the Autocomplete effect doesn't re-fire on unrelated re-renders.
   const titleFetch = useCallback((q: string) => fetchTitleSuggestions(q, mode), [mode]);
@@ -177,6 +222,26 @@ export default function Page() {
     newGame(start, mode);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try {
+      window.localStorage.setItem("box-office-theme", theme);
+    } catch {}
+  }, [theme]);
+
+  useEffect(() => {
+    if (!showSettings) return;
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (!settingsRef.current?.contains(event.target as Node)) {
+        setShowSettings(false);
+      }
+    };
+
+    window.addEventListener("pointerdown", onPointerDown);
+    return () => window.removeEventListener("pointerdown", onPointerDown);
+  }, [showSettings]);
 
   // Close the enlarged photo with Escape.
   useEffect(() => {
@@ -297,17 +362,6 @@ export default function Page() {
     }
   }
 
-  if (loading) return <div className="wrap"><div className="center">Dealing the cast…</div></div>;
-  if (error)
-    return (
-      <div className="wrap">
-        <div className="center">
-          <p>{error}</p>
-          <button onClick={() => newGame()}>Try again</button>
-        </div>
-      </div>
-    );
-
   return (
     <div className="wrap">
       <div className="topbar">
@@ -321,61 +375,98 @@ export default function Page() {
           <button type="button" className="btn btn-ghost btn-topbar" onClick={() => newGame()}>
             New game
           </button>
-          <button
-            type="button"
-            className="pill settings-toggle"
-            onClick={() => setShowSettings((s) => !s)}
-            aria-expanded={showSettings}
-          >
-            <span className="gear">⚙</span>
-            {DIFFICULTIES.find((d) => d.id === difficulty)?.label}
-            <span className="pill-sep">·</span>
-            {mode === "movie" ? "Movies" : "Movies + TV"}
-          </button>
+          <div className="settings-anchor" ref={settingsRef}>
+            <button
+              type="button"
+              className="pill settings-toggle"
+              onClick={() => setShowSettings((s) => !s)}
+              aria-expanded={showSettings}
+            >
+              <span className="gear">⚙</span>
+              {DIFFICULTIES.find((d) => d.id === difficulty)?.label}
+              <span className="pill-sep">·</span>
+              {mode === "movie" ? "Movies" : "Movies + TV"}
+            </button>
+
+            {showSettings && (
+              <div className="settings-panel settings-panel-popover">
+                <div>
+                  <div className="grp-label">Difficulty</div>
+                  <div className="seg">
+                  {DIFFICULTIES.map((d) => (
+                    <button
+                      key={d.id}
+                      type="button"
+                      aria-pressed={difficulty === d.id}
+                      onClick={() => {
+                        setShowSettings(false);
+                        newGame(d.id, mode);
+                      }}
+                    >
+                      {d.label}
+                    </button>
+                  ))}
+                  </div>
+                </div>
+                <div>
+                  <div className="grp-label">Catalogue</div>
+                  <div className="seg">
+                  {MODES.map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      aria-pressed={mode === m.id}
+                      onClick={() => {
+                        setShowSettings(false);
+                        newGame(difficulty, m.id);
+                      }}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                  </div>
+                </div>
+                <div>
+                  <div className="grp-label">Theme</div>
+                  <div className="seg">
+                  {THEMES.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      aria-pressed={theme === t.id}
+                      onClick={() => setTheme(t.id)}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      {showSettings && (
-        <div className="settings-panel settings-panel-inline">
-          <div>
-            <div className="grp-label">Difficulty</div>
-            <div className="seg">
-            {DIFFICULTIES.map((d) => (
-              <button
-                key={d.id}
-                type="button"
-                aria-pressed={difficulty === d.id}
-                onClick={() => {
-                  setShowSettings(false);
-                  newGame(d.id, mode);
-                }}
-              >
-                {d.label}
-              </button>
-            ))}
-            </div>
+      {loading ? (
+        <div className="loading-stage" aria-live="polite" aria-busy="true">
+          <div className="loading-marquee" aria-hidden="true">
+            <span className="loading-reel" />
+            <span className="loading-reel" />
+            <span className="loading-reel" />
           </div>
-          <div>
-            <div className="grp-label">Catalogue</div>
-            <div className="seg">
-            {MODES.map((m) => (
-              <button
-                key={m.id}
-                type="button"
-                aria-pressed={mode === m.id}
-                onClick={() => {
-                  setShowSettings(false);
-                  newGame(difficulty, m.id);
-                }}
-              >
-                {m.label}
-              </button>
-            ))}
-            </div>
+          <div className="loading-copy">
+            <div className="loading-kicker">Building Matchup</div>
+            <div className="loading-title">Dealing the cast…</div>
+            <p className="loading-text">Pulling a fresh start and target from TMDB.</p>
           </div>
         </div>
-      )}
-
+      ) : error ? (
+        <div className="center">
+          <p>{error}</p>
+          <button onClick={() => newGame()}>Try again</button>
+        </div>
+      ) : (
+        <>
       {target && current && (
         <div className="goal">
           <div className="bill">
@@ -475,9 +566,7 @@ export default function Page() {
               </div>
             </div>
             <div className="b-actions">
-              <button type="button" className="btn btn-ghost" onClick={undoStep} disabled={undoHistory.length === 0}>
-                Undo last step
-              </button>
+              <UndoButton disabled={undoHistory.length === 0} onClick={undoStep} />
               <button type="button" className="btn btn-primary" onClick={() => newGame()}>
                 New game
               </button>
@@ -517,9 +606,7 @@ export default function Page() {
             <button type="submit" className="btn btn-primary" disabled={checking || !movie.trim() || !costar.trim()}>
               {checking ? "Checking…" : "Make the link"}
             </button>
-            <button type="button" className="btn btn-ghost" onClick={undoStep} disabled={undoHistory.length === 0 || checking || hinting}>
-              Undo last step
-            </button>
+            <UndoButton disabled={undoHistory.length === 0 || checking || hinting} onClick={undoStep} />
           </div>
 
           <div className="hints">
@@ -553,6 +640,8 @@ export default function Page() {
             <div className={`verify-flash ${feedback.good ? "ok" : "no"}`}>{feedback.text}</div>
           )}
         </form>
+      )}
+        </>
       )}
 
       {zoomed && (

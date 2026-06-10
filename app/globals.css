@@ -19,7 +19,42 @@
   --mono: "Space Mono", "SFMono-Regular", Consolas, monospace;
   --r: 14px;
   --maxw: 1080px;
+  --page-bg-top: color-mix(in oklch, var(--brass) 11%, transparent);
+  --page-bg-bottom: var(--noir-0);
+  --page-bg-solid: var(--noir-1);
+  --page-fg: var(--cream);
+  --accent-ink: var(--noir-0);
+  --scrim: color-mix(in oklch, var(--noir-0) 78%, transparent);
+  --scrim-strong: color-mix(in oklch, var(--noir-0) 86%, transparent);
+  --grain-blend: overlay;
   color-scheme: dark;
+}
+
+html[data-theme="light"] {
+  --noir-0: oklch(0.865 0.018 82);
+  --noir-1: oklch(0.958 0.011 88);
+  --noir-2: oklch(0.988 0.006 92);
+  --noir-3: oklch(0.835 0.018 82);
+  --brass: oklch(0.63 0.14 80);
+  --brass-d: oklch(0.55 0.118 76);
+  --brass-glow: oklch(0.72 0.138 84);
+  --paper: oklch(0.995 0.004 95);
+  --ink: oklch(0.24 0.02 62);
+  --ink-soft: oklch(0.41 0.018 64);
+  --cream: oklch(0.23 0.02 62);
+  --muted: oklch(0.47 0.016 68);
+  --muted-d: oklch(0.62 0.014 72);
+  --win: oklch(0.66 0.15 145);
+  --bad: oklch(0.61 0.18 28);
+  --page-bg-top: color-mix(in oklch, var(--brass) 20%, transparent);
+  --page-bg-bottom: color-mix(in oklch, var(--brass) 8%, white 92%);
+  --page-bg-solid: oklch(0.968 0.01 90);
+  --page-fg: var(--cream);
+  --accent-ink: oklch(0.17 0.018 62);
+  --scrim: color-mix(in oklch, var(--ink) 32%, transparent);
+  --scrim-strong: color-mix(in oklch, var(--ink) 42%, transparent);
+  --grain-blend: multiply;
+  color-scheme: light;
 }
 
 * {
@@ -36,10 +71,10 @@ body {
 body {
   font-family: var(--ui);
   background:
-    radial-gradient(120% 80% at 50% -10%, color-mix(in oklch, var(--brass) 11%, transparent) 0%, transparent 46%),
-    radial-gradient(140% 100% at 50% 120%, var(--noir-0) 0%, transparent 60%),
-    var(--noir-1);
-  color: var(--cream);
+    radial-gradient(120% 80% at 50% -10%, var(--page-bg-top) 0%, transparent 46%),
+    radial-gradient(140% 100% at 50% 120%, var(--page-bg-bottom) 0%, transparent 60%),
+    var(--page-bg-solid);
+  color: var(--page-fg);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -51,7 +86,7 @@ body::after {
   pointer-events: none;
   opacity: 0.045;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  mix-blend-mode: overlay;
+  mix-blend-mode: var(--grain-blend);
 }
 
 a {
@@ -66,7 +101,7 @@ input {
 
 ::selection {
   background: var(--brass);
-  color: var(--noir-0);
+  color: var(--accent-ink);
 }
 
 :focus-visible {
@@ -141,7 +176,8 @@ input {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: clamp(14px, 3vh, 26px);
+  align-items: center;
+  gap: clamp(12px, 2.2vh, 22px);
   max-width: min(92vw, 760px);
   padding: clamp(20px, 4vw, 40px) clamp(26px, 6vw, 72px);
   border: 1px solid color-mix(in oklch, var(--brass) 34%, transparent);
@@ -180,13 +216,41 @@ input {
 
 .wordmark {
   margin: 0;
-  font-family: var(--display);
-  font-weight: 600;
-  font-size: clamp(44px, 11vw, 116px);
-  line-height: 0.9;
-  letter-spacing: -0.01em;
-  color: var(--cream);
-  text-shadow: 0 2px 30px color-mix(in oklch, var(--brass) 22%, transparent);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(10px, 1.8vh, 18px);
+}
+
+.wordmark-title {
+  font-family: var(--display, var(--mono));
+  font-weight: 800;
+  font-size: clamp(36px, 8vw, 80px);
+  line-height: 0.95;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+  background: linear-gradient(180deg, var(--brass), var(--brass-d));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-align: center;
+}
+
+.tagline {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: clamp(12px, 1.8vw, 16px);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--brass);
+}
+
+.wordmark-logo {
+  display: block;
+  width: clamp(170px, 28vw, 290px);
+  height: auto;
+  margin: 0 auto;
+  filter: drop-shadow(0 2px 30px color-mix(in oklch, var(--brass) 22%, transparent));
 }
 
 .deg {
@@ -200,6 +264,7 @@ input {
   font-size: clamp(15px, 2.1vw, 20px);
   line-height: 1.5;
   color: var(--muted);
+  text-align: center;
   text-wrap: balance;
 }
 
@@ -327,6 +392,55 @@ input {
   padding: 32px 18px;
 }
 
+.credits-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 32px 18px;
+  background: var(--scrim);
+  backdrop-filter: blur(10px);
+}
+
+.credits-modal-card {
+  position: relative;
+  width: min(720px, 100%);
+}
+
+.credits-modal-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid color-mix(in oklch, var(--brass) 22%, transparent);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--noir-1) 78%, black 22%);
+  color: var(--cream);
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    transform 140ms ease,
+    border-color 140ms ease,
+    background 140ms ease;
+}
+
+.credits-modal-close:hover {
+  transform: scale(1.04);
+  border-color: color-mix(in oklch, var(--brass) 42%, transparent);
+  background: color-mix(in oklch, var(--noir-1) 66%, black 34%);
+}
+
+.credits-modal-close:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
 .credits-card {
   width: min(720px, 100%);
   padding: clamp(26px, 4vw, 42px);
@@ -390,7 +504,7 @@ input {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  max-width: 190px;
+  width: min(190px, 100%);
   padding: 14px 16px;
   margin-bottom: 14px;
   border: 1px solid var(--noir-3);
@@ -401,22 +515,12 @@ input {
 .tmdb-logo {
   display: block;
   width: 100%;
+  flex: none;
   height: auto;
 }
 
-.credits-section a,
-.credits-actions a {
+.credits-section a {
   color: var(--brass);
-}
-
-.credits-actions {
-  display: flex;
-  gap: 18px;
-  margin-top: 30px;
-  font-family: var(--mono);
-  font-size: 13px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .topbar {
@@ -443,21 +547,19 @@ input {
   font-weight: 600;
 }
 
-.brand-mark {
-  width: 34px;
-  height: 34px;
+.brand-logo {
+  width: 88px;
+  height: auto;
   flex: none;
-  display: grid;
-  place-items: center;
-  border-radius: 8px;
-  background: var(--brass);
-  color: var(--noir-0);
-  font-size: 18px;
-  box-shadow: 0 0 18px -4px var(--brass);
+  display: block;
 }
 
 .settings-toggle {
   white-space: nowrap;
+}
+
+.settings-anchor {
+  position: relative;
 }
 
 .pill {
@@ -507,6 +609,13 @@ input {
   margin-left: auto;
 }
 
+.settings-panel-popover {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 30;
+}
+
 @keyframes popIn {
   from {
     opacity: 0;
@@ -553,7 +662,7 @@ input {
 
 .seg button[aria-pressed="true"] {
   background: var(--brass);
-  color: var(--noir-0);
+  color: var(--accent-ink);
   box-shadow: 0 0 14px -4px var(--brass);
 }
 
@@ -1117,7 +1226,7 @@ img.avatar {
 
 .btn-primary {
   background: var(--brass);
-  color: var(--noir-0);
+  color: var(--accent-ink);
   box-shadow: 0 10px 26px -10px var(--brass);
 }
 
@@ -1130,6 +1239,41 @@ img.avatar {
   background: transparent;
   color: var(--cream);
   border-color: var(--noir-3);
+}
+
+.btn-undo {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  background: color-mix(in oklch, var(--brass) 14%, var(--noir-2));
+  color: var(--brass);
+  border-color: color-mix(in oklch, var(--brass) 24%, var(--noir-3));
+  box-shadow: inset 0 1px 0 color-mix(in oklch, white 12%, transparent);
+}
+
+.btn-undo:hover:not(:disabled) {
+  transform: translateY(-2px);
+  background: color-mix(in oklch, var(--brass) 20%, var(--noir-2));
+  border-color: color-mix(in oklch, var(--brass) 42%, var(--noir-3));
+  box-shadow: 0 10px 18px -14px color-mix(in oklch, var(--brass) 55%, transparent);
+}
+
+.undo-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.undo-icon-arrow {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .btn-topbar {
@@ -1212,7 +1356,7 @@ img.avatar {
   display: grid;
   place-items: center;
   padding: 24px;
-  background: color-mix(in oklch, var(--noir-0) 78%, transparent);
+  background: var(--scrim);
   backdrop-filter: blur(6px);
   animation: popIn 0.2s ease;
 }
@@ -1299,7 +1443,7 @@ img.avatar {
   display: grid;
   place-items: center;
   padding: 24px;
-  background: color-mix(in oklch, var(--noir-0) 86%, transparent);
+  background: var(--scrim-strong);
   backdrop-filter: blur(8px);
   animation: popIn 0.18s ease;
   cursor: zoom-out;
@@ -1356,6 +1500,80 @@ img.avatar {
   padding: 60px 0;
   text-align: center;
   color: var(--muted);
+}
+
+.loading-stage {
+  display: grid;
+  place-items: center;
+  gap: 22px;
+  min-height: min(56vh, 520px);
+  padding: clamp(28px, 6vw, 56px) 18px;
+  border: 1px solid var(--noir-3);
+  border-radius: var(--r);
+  background:
+    radial-gradient(circle at top, color-mix(in oklch, var(--brass) 12%, transparent), transparent 48%),
+    var(--noir-2);
+  box-shadow: 0 18px 44px -26px rgba(0, 0, 0, 0.8);
+  text-align: center;
+}
+
+.loading-marquee {
+  display: flex;
+  gap: 12px;
+}
+
+.loading-reel {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--brass) 86%, white 14%);
+  box-shadow: 0 0 18px -4px var(--brass);
+  animation: loaderPulse 0.9s ease-in-out infinite;
+}
+
+.loading-reel:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.loading-reel:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+.loading-copy {
+  display: grid;
+  gap: 8px;
+}
+
+.loading-kicker {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--brass);
+}
+
+.loading-title {
+  font-family: var(--display);
+  font-size: clamp(32px, 5vw, 46px);
+  line-height: 0.96;
+}
+
+.loading-text {
+  margin: 0;
+  color: var(--muted);
+}
+
+@keyframes loaderPulse {
+  0%,
+  100% {
+    transform: translateY(0) scale(0.86);
+    opacity: 0.45;
+  }
+
+  50% {
+    transform: translateY(-8px) scale(1);
+    opacity: 1;
+  }
 }
 
 @media (max-width: 720px) {

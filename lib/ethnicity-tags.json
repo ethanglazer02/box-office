@@ -1,0 +1,30 @@
+{
+  "_comment": "Curated race/ethnicity layer for difficulty diversity. TMDB exposes no race field, so prominent actors are hand-tagged to guarantee the start/target pool isn't all-white. Keyed by TMDB person id; `name` is verified against TMDB at build time (a mismatch warns). Tags should be one of: Black, Latino, East Asian, South Asian, MENA, Indigenous, White.",
+  "tags": {
+    "31":     {"name": "Tom Hanks",          "tag": "White"},
+    "287":    {"name": "Brad Pitt",          "tag": "White"},
+    "1204":   {"name": "Julia Roberts",      "tag": "White"},
+    "6193":   {"name": "Leonardo DiCaprio",  "tag": "White"},
+    "2127":   {"name": "Paul Giamatti",      "tag": "White"},
+    "192":    {"name": "Morgan Freeman",     "tag": "Black"},
+    "2231":   {"name": "Samuel L. Jackson",  "tag": "Black"},
+    "5292":   {"name": "Denzel Washington",  "tag": "Black"},
+    "2888":   {"name": "Will Smith",         "tag": "Black"},
+    "19492":  {"name": "Viola Davis",        "tag": "Black"},
+    "6944":   {"name": "Octavia Spencer",    "tag": "Black"},
+    "1267329":{"name": "Lupita Nyong'o",     "tag": "Black"},
+    "8691":   {"name": "Zoe Saldaña",        "tag": "Latino"},
+    "25072":  {"name": "Oscar Isaac",        "tag": "Latino"},
+    "3136":   {"name": "Salma Hayek Pinault","tag": "Latino"},
+    "258":    {"name": "Gael García Bernal", "tag": "Latino"},
+    "1121":   {"name": "Benicio del Toro",   "tag": "Latino"},
+    "1620":   {"name": "Michelle Yeoh",      "tag": "East Asian"},
+    "3899":   {"name": "Ken Watanabe",       "tag": "East Asian"},
+    "18307":  {"name": "Daniel Dae Kim",     "tag": "East Asian"},
+    "68842":  {"name": "John Cho",           "tag": "East Asian"},
+    "25540":  {"name": "Sandra Oh",          "tag": "East Asian"},
+    "76788":  {"name": "Dev Patel",          "tag": "South Asian"},
+    "53240":  {"name": "Riz Ahmed",          "tag": "South Asian"},
+    "17838":  {"name": "Rami Malek",         "tag": "MENA"}
+  }
+}

@@ -24,6 +24,7 @@ export interface PersonLite {
   name: string;
   profilePath: string | null;
   knownFor: string;
+  gender?: number | null;
   // Recognizability proxy: vote count of the person's most-rated ENGLISH-language
   // credit. ~free (known_for is already in the /person/popular payload). Using the
   // English peak biases toward actors a Western/English-speaking player would know,
@@ -105,6 +106,7 @@ export async function getPopularPeople(page: number): Promise<PersonLite[]> {
         id: p.id,
         name: p.name,
         profilePath: p.profile_path ?? null,
+        gender: p.gender ?? null,
         famePeak: english.reduce((m: number, k: any) => Math.max(m, k.vote_count || 0), 0),
         knownFor: [...known]
           .sort((a: any, b: any) => (b.vote_count || 0) - (a.vote_count || 0))

@@ -2,9 +2,9 @@ import Link from "next/link";
 import SiteFooter from "./SiteFooter";
 
 const LEVELS: { id: string; label: string; tag: string; blurb: string }[] = [
-  { id: "easy", label: "Easy", tag: "Matinee", blurb: "Household-name stars and box-office giants." },
-  { id: "medium", label: "Medium", tag: "Prime Time", blurb: "Mainstream films with a little more legwork." },
-  { id: "hard", label: "Hard", tag: "Last Call", blurb: "Deep cuts and character actors. No mercy." }
+  { id: "easy", label: "Easy", tag: "Matinee", blurb: "Household-name stars you should know on sight." },
+  { id: "medium", label: "Medium", tag: "Prime Time", blurb: "Recognizable faces with trickier filmographies." },
+  { id: "hard", label: "Hard", tag: "Last Call", blurb: "\"I know them from something\" actors." }
 ];
 
 function MarqueeBulbs({ count = 20 }: { count?: number }) {
@@ -24,8 +24,11 @@ export default function Home() {
       <div className="marquee">
         <div className="kicker">Now Showing</div>
         <h1 className="wordmark">
-          Box Office
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/box-office-logo.png" alt="Box Office" className="wordmark-logo" />
+          <span className="wordmark-title">Box Office</span>
         </h1>
+        <p className="tagline">A movie-connection game</p>
         <p className="hook">
           Link a starting actor to your target through shared movies and shows, then see how low you
           can keep both your path length and total box office.
