@@ -6,6 +6,7 @@
     "build": "next build",
     "dev": "next dev",
     "start": "next start",
+    "test": "node --test --experimental-strip-types",
     "lint": "next lint",
     "build:pool": "node scripts/build-actor-pool.mjs",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
