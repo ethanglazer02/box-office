@@ -32,7 +32,7 @@ test("Daily Reel changes when the Eastern date rolls over", () => {
 test("Daily Reel actors only come from the easy and medium committed pools", () => {
   const matchup = getDailyReel("2026-06-12");
 
-  assert.match(matchup.start.tier, /^(easy|medium)$/);
+  assert.equal(matchup.start.tier, "easy");
   assert.match(matchup.target.tier, /^(easy|medium)$/);
 });
 
@@ -46,19 +46,28 @@ test("Daily Reel pairs never share a movie credit", () => {
   }
 });
 
-test("no actor repeats within the first full cycle", () => {
-  const seen = new Set<number>();
+test("Daily Reel uses a 75/25 easy-easy versus easy-medium split", () => {
+  let easyEasy = 0;
+  let easyMedium = 0;
   let currentDate = new Date(Date.UTC(2026, 5, 10));
 
   for (let index = 0; index < DAILY_REEL_CYCLE_LENGTH; index++) {
     const dateKey = currentDate.toISOString().slice(0, 10);
     const matchup = getDailyReel(dateKey);
-    assert.equal(seen.has(matchup.start.id), false);
-    assert.equal(seen.has(matchup.target.id), false);
-    seen.add(matchup.start.id);
-    seen.add(matchup.target.id);
+
+    assert.equal(matchup.start.tier, "easy");
+    if (matchup.target.tier === "easy") {
+      easyEasy++;
+    } else {
+      assert.equal(matchup.target.tier, "medium");
+      easyMedium++;
+    }
+
     currentDate = new Date(currentDate.getTime() + 86_400_000);
   }
+
+  assert.equal(easyEasy + easyMedium, DAILY_REEL_CYCLE_LENGTH);
+  assert.equal(easyMedium * 3, easyEasy);
 });
 
 test("dated lookups reproduce the archived daily matchup", () => {

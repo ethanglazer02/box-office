@@ -33,10 +33,18 @@ const RAW_TIERS = (poolData as {
   tiers: Record<DailyReelTier | "hard", BasePoolActor[]>;
 }).tiers;
 
-const DAILY_REEL_POOL: DailyReelActor[] = [
-  ...RAW_TIERS.easy.map((actor) => ({ ...actor, tier: "easy" as const })),
-  ...RAW_TIERS.medium.map((actor) => ({ ...actor, tier: "medium" as const })),
-];
+const DAILY_REEL_EASY_POOL: DailyReelActor[] = RAW_TIERS.easy.map((actor) => ({
+  ...actor,
+  tier: "easy" as const,
+}));
+
+const DAILY_REEL_MEDIUM_POOL: DailyReelActor[] = RAW_TIERS.medium.map((actor) => ({
+  ...actor,
+  tier: "medium" as const,
+}));
+
+const DAILY_REEL_PATTERN = ["easy-easy", "easy-easy", "easy-easy", "easy-medium"] as const;
+type DailyReelPatternEntry = (typeof DAILY_REEL_PATTERN)[number];
 
 function hash(input: string): number {
   let value = 2166136261;
@@ -61,10 +69,10 @@ function sharesMovie(a: DailyReelActor, b: DailyReelActor): boolean {
   return b.movieIds.some((movieId) => movieIds.has(movieId));
 }
 
-function buildInterleavedOrder(): DailyReelActor[] {
+function buildInterleavedOrder(actors: DailyReelActor[]): DailyReelActor[] {
   const buckets = new Map<string, DailyReelActor[]>();
 
-  for (const actor of DAILY_REEL_POOL) {
+  for (const actor of actors) {
     const bucketKey = `${actor.tier}:${actor.ethnicityTag}`;
     const bucket = buckets.get(bucketKey) ?? [];
     bucket.push(actor);
@@ -98,44 +106,74 @@ function buildInterleavedOrder(): DailyReelActor[] {
   return interleaved;
 }
 
-function findPartnerIndex(actor: DailyReelActor, queue: DailyReelActor[]): number {
-  let sameTierIndex = -1;
+function pairKey(a: DailyReelActor, b: DailyReelActor): string {
+  return a.id < b.id ? `${a.id}:${b.id}` : `${b.id}:${a.id}`;
+}
 
-  for (let index = 0; index < queue.length; index++) {
-    const candidate = queue[index];
-    if (sharesMovie(actor, candidate)) continue;
-    if (candidate.tier !== actor.tier) return index;
-    if (sameTierIndex === -1) sameTierIndex = index;
+function findCandidate(
+  actor: DailyReelActor,
+  order: DailyReelActor[],
+  startIndex: number,
+  usedPairs: Set<string>
+): { actor: DailyReelActor; nextIndex: number } | null {
+  let fallback: { actor: DailyReelActor; nextIndex: number } | null = null;
+
+  for (let offset = 0; offset < order.length; offset++) {
+    const index = (startIndex + offset) % order.length;
+    const candidate = order[index];
+
+    if (candidate.id === actor.id || sharesMovie(actor, candidate)) continue;
+
+    const result = {
+      actor: candidate,
+      nextIndex: (index + 1) % order.length,
+    };
+
+    if (!usedPairs.has(pairKey(actor, candidate))) return result;
+    fallback ??= result;
   }
 
-  return sameTierIndex;
+  return fallback;
 }
 
 function buildCycle(): DailyReelActor[][] {
-  const queue = [...buildInterleavedOrder()];
+  const easyOrder = buildInterleavedOrder(DAILY_REEL_EASY_POOL);
+  const mediumOrder = buildInterleavedOrder(DAILY_REEL_MEDIUM_POOL);
   const pairs: DailyReelActor[][] = [];
-  let stalled = 0;
+  const usedPairs = new Set<string>();
+  const cycleLength = mediumOrder.length * DAILY_REEL_PATTERN.length;
+  let easyIndex = 0;
+  let mediumIndex = 0;
 
-  while (queue.length >= 2) {
-    const actor = queue.shift()!;
-    const partnerIndex = findPartnerIndex(actor, queue);
+  for (let day = 0; day < cycleLength; day++) {
+    const pattern = DAILY_REEL_PATTERN[day % DAILY_REEL_PATTERN.length] as DailyReelPatternEntry;
 
-    if (partnerIndex === -1) {
-      queue.push(actor);
-      stalled += 1;
-      if (stalled > queue.length * 4) {
-        throw new Error(`Daily Reel scheduling stalled with ${queue.length} actors remaining.`);
+    if (pattern === "easy-easy") {
+      const start = easyOrder[easyIndex];
+      easyIndex = (easyIndex + 1) % easyOrder.length;
+
+      const partner = findCandidate(start, easyOrder, easyIndex, usedPairs);
+      if (!partner) {
+        throw new Error(`Daily Reel scheduling could not find an easy partner for ${start.name}.`);
       }
+
+      easyIndex = partner.nextIndex;
+      usedPairs.add(pairKey(start, partner.actor));
+      pairs.push([start, partner.actor]);
       continue;
     }
 
-    stalled = 0;
-    const [partner] = queue.splice(partnerIndex, 1);
-    pairs.push([actor, partner]);
-  }
+    const start = easyOrder[easyIndex];
+    easyIndex = (easyIndex + 1) % easyOrder.length;
 
-  if (queue.length > 0) {
-    throw new Error("Daily Reel scheduling left an unpaired actor in the cycle.");
+    const partner = findCandidate(start, mediumOrder, mediumIndex, usedPairs);
+    if (!partner) {
+      throw new Error(`Daily Reel scheduling could not find a medium partner for ${start.name}.`);
+    }
+
+    mediumIndex = partner.nextIndex;
+    usedPairs.add(pairKey(start, partner.actor));
+    pairs.push([start, partner.actor]);
   }
 
   return pairs;
