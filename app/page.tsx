@@ -29,6 +29,9 @@ export default function Home() {
           <Link href="/daily" className="home-cta home-cta-primary">
             <span className="home-cta-kicker">Today's Challenge</span>
             <span className="home-cta-title">The Daily Reel</span>
+            <span className="home-cta-copy">
+              Everyone gets the same movie-only matchup today. Beat the field with a lower box office path.
+            </span>
           </Link>
           <Link href="/free-play" className="home-cta home-cta-secondary">
             <span className="home-cta-title">Free Play</span>
