@@ -1,0 +1,5 @@
+I want to add a new feature called the 'Daily Reel'. This will be a daily challenge, where all users will have the same two actors who they have to connect while trying to minimize box office. Requirements:
+- The Daily Reel should not repeat actors over time, they should be all easy to medium picks, you must make sure there is diversity where people dont see the same actors over time a lot.
+- When they share the Daily Reel the message talks about how "the user completed the Daily Reel with a total box office of X. Can you do better?" or something along those lines.
+
+I want to keep the easy, medium, and hard games but move them to a section of the app called 'Free Play'. So the home page should have buttons for both the daily reel and for free play (try to draw the user to the daily reel though)

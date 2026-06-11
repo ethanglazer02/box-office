@@ -1,17 +1,11 @@
 import Link from "next/link";
 import SiteFooter from "./SiteFooter";
 
-const LEVELS: { id: string; label: string; tag: string; blurb: string }[] = [
-  { id: "easy", label: "Easy", tag: "Matinee", blurb: "Household-name stars you should know on sight." },
-  { id: "medium", label: "Medium", tag: "Prime Time", blurb: "Recognizable faces with trickier filmographies." },
-  { id: "hard", label: "Hard", tag: "Last Call", blurb: "\"I know them from something\" actors." }
-];
-
 function MarqueeBulbs({ count = 20 }: { count?: number }) {
   return (
     <div className="bulbs" aria-hidden="true">
-      {Array.from({ length: count }, (_, i) => (
-        <span key={i} className="bulb" />
+      {Array.from({ length: count }, (_, index) => (
+        <span key={index} className="bulb" />
       ))}
     </div>
   );
@@ -19,10 +13,9 @@ function MarqueeBulbs({ count = 20 }: { count?: number }) {
 
 export default function Home() {
   return (
-    <div className="landing">
+    <div className="landing home-landing">
       <MarqueeBulbs />
-      <div className="marquee">
-        <div className="kicker">Now Showing</div>
+      <div className="marquee home-marquee">
         <h1 className="wordmark">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/box-office-logo.png" alt="Box Office" className="wordmark-logo" />
@@ -32,18 +25,18 @@ export default function Home() {
         <p className="hook">
           Connect actors through shared films and chase the lowest box office total with niche picks.
         </p>
-        <p className="hook">
-          Anyone can burn through blockbusters. The best runs prove you know the deep cuts.
-        </p>
-      </div>
-      <div className="tickets-row">
-        {LEVELS.map((level) => (
-          <Link key={level.id} href={`/play?difficulty=${level.id}`} className="ticket-btn">
-            <span className="t-grade">{level.tag}</span>
-            <span className="t-name">{level.label}</span>
-            <span className="t-desc">{level.blurb}</span>
+        <div className="home-cta-grid">
+          <Link href="/daily" className="home-cta home-cta-primary">
+            <span className="home-cta-kicker">Today's Challenge</span>
+            <span className="home-cta-title">The Daily Reel</span>
           </Link>
-        ))}
+          <Link href="/free-play" className="home-cta home-cta-secondary">
+            <span className="home-cta-title">Free Play</span>
+            <span className="home-cta-copy">
+              Choose your own difficulty, reroll fresh pairs, and switch between Movies only and Movies + TV.
+            </span>
+          </Link>
+        </div>
       </div>
       <MarqueeBulbs />
       <SiteFooter />
