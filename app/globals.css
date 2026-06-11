@@ -369,8 +369,28 @@ input {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-wrap: wrap;
   gap: 12px;
   padding-top: 10px;
+}
+
+.site-footer-theme {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  background: none;
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 0.18s ease, transform 0.12s ease;
+}
+
+.site-footer-theme:hover {
+  color: var(--brass);
+  transform: translateY(-1px);
 }
 
 .site-footer-link {
@@ -1816,6 +1836,25 @@ img.avatar {
 .home-cta-copy {
   color: var(--muted);
   line-height: 1.55;
+}
+
+html[data-theme="light"] .home-cta-primary {
+  border-color: color-mix(in oklch, var(--brass) 38%, white 20%);
+  background:
+    radial-gradient(circle at top right, color-mix(in oklch, var(--brass) 22%, transparent), transparent 42%),
+    linear-gradient(180deg, color-mix(in oklch, var(--brass) 14%, white 86%), transparent 55%),
+    color-mix(in oklch, white 88%, var(--brass) 12%);
+  box-shadow:
+    0 0 0 1px color-mix(in oklch, var(--brass) 12%, white 88%) inset,
+    0 20px 38px -28px rgba(75, 52, 18, 0.28);
+}
+
+html[data-theme="light"] .home-cta-secondary {
+  border-color: color-mix(in oklch, var(--brass) 16%, var(--noir-3));
+  background:
+    linear-gradient(180deg, color-mix(in oklch, var(--brass) 8%, white 92%), transparent 60%),
+    color-mix(in oklch, white 94%, var(--noir-0) 6%);
+  box-shadow: 0 20px 38px -30px rgba(48, 36, 16, 0.18);
 }
 
 .landing-free-play {

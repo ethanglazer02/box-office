@@ -16,14 +16,14 @@ export const metadata: Metadata = {
 
 const themeInitScript = `
   (() => {
-    const systemTheme = window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+    const defaultTheme = "dark";
 
     try {
       const stored = window.localStorage.getItem("box-office-theme");
       document.documentElement.dataset.theme =
-        stored === "light" || stored === "dark" ? stored : systemTheme;
+        stored === "light" || stored === "dark" ? stored : defaultTheme;
     } catch {
-      document.documentElement.dataset.theme = systemTheme;
+      document.documentElement.dataset.theme = defaultTheme;
     }
   })();
 `;
