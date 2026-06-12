@@ -12,6 +12,7 @@ export default function HowToPlayCard() {
         <ol className="htp-steps">
           <li>You see a <strong>Start</strong> actor and a <strong>Target</strong> actor.</li>
           <li>Name a <strong>film</strong> the current actor appeared in, and a <strong>co-star</strong> from that same film.</li>
+          <li>The film must already be <strong>released</strong> — upcoming titles don&apos;t count.</li>
           <li>If both check out, the co-star becomes your new current actor.</li>
           <li>Keep going until your co-star <em>is</em> the target — that&apos;s a win.</li>
         </ol>
@@ -29,8 +30,9 @@ export default function HowToPlayCard() {
       <section className="credits-section">
         <h2>Hints</h2>
         <p className="credits-copy">
-          You get <strong>3 hints </strong> per game. One reveals a film the current actor appeared in.
-          The other reveals a co-star once you&apos;ve named a film. Each hint uses one from your total.
+          You get <strong>3 hints </strong> per game. <strong>Movie</strong> reveals a title the current actor appeared in,
+          <strong> Co-star</strong> reveals someone from a title you&apos;ve already typed, and <strong>Star titles</strong>
+          lets you reveal one reference-only title at a time for the Start or Target actor. Each reveal uses one from your total.
         </p>
       </section>
     </div>

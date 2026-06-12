@@ -5,6 +5,7 @@ export interface CreditTitle {
   id: number;
   title: string; // normalized display title (movie title or TV name)
   year: string | null;
+  releaseDate: string | null; // full YYYY-MM-DD — used to exclude unreleased titles
   mediaType: "movie" | "tv";
   posterPath: string | null;
   character?: string;
@@ -43,7 +44,7 @@ export interface TitleLite {
 const GLOBAL_MOVIE_RECOGNITION_FLOOR = 2500;
 const actingCreditsCache = new Map<number, Promise<CreditTitle[]>>();
 const titleCastCache = new Map<string, Promise<CastMember[]>>();
-const titleValueCache = new Map<string, Promise<number>>();
+const titleValueCache = new Map<string, Promise<TitleValue>>();
 
 // TV has no real box office. We synthesize a comparable "gross" from signals
 // TMDB returns on /tv/{id}: audience size (vote_count) scaled by how much content
@@ -55,6 +56,21 @@ const titleValueCache = new Map<string, Promise<number>>();
 //   The Office       (~4k votes, 201 eps) → ~$360M
 //   a 1-season niche (~300 votes, 8 eps)  → ~$5M
 const TV_VALUE_CONSTANT = 6400;
+
+// Streaming-only films (Netflix originals, etc.) report revenue 0 on TMDB.
+// We synthesize a theatrical-equivalent gross from audience size (vote_count),
+// scaled by a constant eyeball-calibrated against real theatrical films so a
+// streaming hit lands in plausible box-office range:
+//   Red Notice    (~10.5k votes) → ~$420M
+//   Don't Look Up (~13k votes)   → ~$520M
+//   The Gray Man  (~3.5k votes)  → ~$140M
+const MOVIE_AUDIENCE_CONSTANT = 40000;
+
+// Below this, a movie's "revenue" isn't a real wide theatrical release — it's a
+// token award-qualifying run that TMDB still records (e.g. Netflix originals
+// like Red Notice at ~$178K). Treat anything under this floor as no-theatrical
+// and estimate from audience size instead.
+const THEATRICAL_REVENUE_FLOOR = 1_000_000;
 
 function memoizePromise<K, V>(
   cache: Map<K, Promise<V>>,
@@ -256,6 +272,7 @@ export async function getActingCredits(personId: number): Promise<CreditTitle[]>
           id: c.id,
           title: (c.title || c.name || "").trim(),
           year: date ? date.slice(0, 4) : null,
+          releaseDate: date || null,
           mediaType: c.media_type as "movie" | "tv",
           posterPath: c.poster_path ?? null,
           character: c.character,
@@ -297,13 +314,27 @@ export async function getTitleCast(
   });
 }
 
-// A box-office-comparable value for any title. Movies use TMDB's real worldwide
-// gross; TV uses a synthesized "gross" (see TV_VALUE_CONSTANT) since no real one
-// exists. Returns 0 when TMDB has no usable data.
+// A box-office-comparable value for any title, with the inputs behind it so the
+// UI can show the math. Movies use TMDB's real worldwide gross; TV uses a
+// synthesized "gross" (see TV_VALUE_CONSTANT) since no real one exists. `value`
+// is 0 when TMDB has no usable data.
+export interface TitleValue {
+  value: number;
+  mediaType: "movie" | "tv";
+  // How `value` was derived: a real theatrical gross, a synthesized gross from
+  // audience size (streaming-only film), or a synthesized TV gross.
+  basis: "theatrical" | "streaming" | "tv";
+  // The inputs to a synthesized gross (TV uses votes+episodes; streaming uses
+  // votes). Absent for real theatrical grosses.
+  votes?: number;
+  episodes?: number;
+  constant?: number;
+}
+
 export async function getTitleValue(
   id: number,
   mediaType: "movie" | "tv"
-): Promise<number> {
+): Promise<TitleValue> {
   return memoizePromise(titleValueCache, `${mediaType}:${id}`, async () => {
     try {
       if (mediaType === "tv") {
@@ -312,12 +343,21 @@ export async function getTitleValue(
         );
         const votes = d.vote_count || 0;
         const episodes = Math.max(1, d.number_of_episodes || 1);
-        return Math.round(votes * Math.sqrt(episodes) * TV_VALUE_CONSTANT);
+        const value = Math.round(votes * Math.sqrt(episodes) * TV_VALUE_CONSTANT);
+        return { value, mediaType, basis: "tv", votes, episodes, constant: TV_VALUE_CONSTANT };
       }
-      const d = await tmdb<{ revenue?: number }>(`/movie/${id}`);
-      return d.revenue || 0;
+      const d = await tmdb<{ revenue?: number; vote_count?: number }>(`/movie/${id}`);
+      const revenue = d.revenue || 0;
+      if (revenue >= THEATRICAL_REVENUE_FLOOR) {
+        return { value: revenue, mediaType, basis: "theatrical" };
+      }
+      // No real wide theatrical release (streaming-only, or a token qualifying
+      // run) — synthesize from audience size.
+      const votes = d.vote_count || 0;
+      const value = Math.round(votes * MOVIE_AUDIENCE_CONSTANT);
+      return { value, mediaType, basis: "streaming", votes, constant: MOVIE_AUDIENCE_CONSTANT };
     } catch {
-      return 0;
+      return { value: 0, mediaType, basis: "theatrical" };
     }
   });
 }

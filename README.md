@@ -22,7 +22,9 @@ so you can't bluff your way through a filmography. The connections have to be re
 
 Spelling is forgiving: accents and punctuation don't matter, a leading "the/a/an" is
 optional, and a co-star's last name usually works. Stuck? You get **3 hints**: one
-reveals a title the actor is in, the other reveals a co-star once you've typed a title.
+reveals a title the current actor is in, one reveals a co-star once you've typed a title,
+and **Star titles** lets you spend a hint to reveal one reference-only title at a time for the
+Start or Target actor.
 
 ## Settings
 

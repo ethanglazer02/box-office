@@ -18,7 +18,7 @@ test("same date key always returns the same Daily Reel matchup", () => {
   assert.equal(first.date, second.date);
   assert.equal(first.start.id, second.start.id);
   assert.equal(first.target.id, second.target.id);
-  assert.equal(first.mode, "movie");
+  assert.equal(first.mode, "all");
 });
 
 test("Daily Reel changes when the Eastern date rolls over", () => {

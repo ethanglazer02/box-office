@@ -1,7 +1,7 @@
 import poolData from "./actor-pool.json" with { type: "json" };
 
 export type DailyReelTier = "easy" | "medium";
-export type DailyReelMode = "movie";
+export type DailyReelMode = "all";
 
 interface BasePoolActor {
   id: number;
@@ -64,6 +64,10 @@ function stableSortByHash<T>(items: T[], key: (item: T) => string): T[] {
   });
 }
 
+// Pairing avoids a shared *movie* so the start/target aren't trivially one move
+// apart. TV credits are intentionally excluded here: the pool's tvIds are
+// dominated by talk/variety shows (e.g. SNL appears for most actors), which
+// would make almost every pair look "connected" and starve the scheduler.
 function sharesMovie(a: DailyReelActor, b: DailyReelActor): boolean {
   const movieIds = new Set(a.movieIds);
   return b.movieIds.some((movieId) => movieIds.has(movieId));
@@ -239,7 +243,7 @@ export function getDailyReel(dateKey: string): DailyReelMatchup {
     date: dateKey,
     start,
     target,
-    mode: "movie",
+    mode: "all",
   };
 }
 

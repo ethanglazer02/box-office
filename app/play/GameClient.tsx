@@ -58,7 +58,17 @@ interface Person {
 
 interface ChainLink {
   actor: Person;
-  via: { name: string; year: string | null; revenue: number; posterPath?: string | null } | null;
+  via: {
+    name: string;
+    year: string | null;
+    revenue: number;
+    mediaType?: "movie" | "tv";
+    basis?: "theatrical" | "streaming" | "tv";
+    votes?: number;
+    episodes?: number;
+    constant?: number;
+    posterPath?: string | null;
+  } | null;
 }
 
 interface UndoSnapshot {
@@ -68,6 +78,7 @@ interface UndoSnapshot {
   feedback: { text: string; good: boolean } | null;
   status: "playing" | "won";
   hintsLeft: number;
+  starTitleHints: Partial<Record<StarHintRole, StarTitleHintState>>;
   usedActorHints: Record<string, number[]>;
 }
 
@@ -89,11 +100,25 @@ interface SharedRound {
   targetId: number;
 }
 
+type StarHintRole = "start" | "target";
+
+interface StarHintTitle {
+  id: number;
+  name: string;
+  year: string | null;
+  posterPath: string | null;
+}
+
+interface StarTitleHintState {
+  remainingTitles: number;
+  titles: StarHintTitle[];
+}
+
 export interface DailyReelResponse {
   date: string;
   start: Person;
   target: Person;
-  mode: "movie";
+  mode: "all";
   variant: "daily";
 }
 
@@ -155,6 +180,58 @@ function money(n: number): string {
   if (n >= 1e9) return `$${(n / 1e9).toFixed(1)}B`;
   if (n >= 1e6) return `$${(n / 1e6).toFixed(0)}M`;
   return `$${(n / 1e3).toFixed(0)}K`;
+}
+
+type BoxOfficeInfo = NonNullable<ChainLink["via"]>;
+
+function boxOfficeTipText(link: BoxOfficeInfo): string {
+  if (link.mediaType === "tv" && link.votes != null && link.episodes != null && link.constant != null) {
+    return (
+      `TV shows have no real box office, so we estimate one from TMDB: ` +
+      `votes × √(episodes) × ${link.constant.toLocaleString()} = ` +
+      `${link.votes.toLocaleString()} × √${link.episodes.toLocaleString()} × ${link.constant.toLocaleString()} ≈ ${money(link.revenue)}.`
+    );
+  }
+  if (link.basis === "streaming" && link.votes != null && link.constant != null) {
+    return (
+      `This film skipped theaters (a streaming release), so it has no real box office. ` +
+      `We estimate one from TMDB audience size: votes × ${link.constant.toLocaleString()} = ` +
+      `${link.votes.toLocaleString()} × ${link.constant.toLocaleString()} ≈ ${money(link.revenue)}.`
+    );
+  }
+  return "Real worldwide theatrical box office gross, sourced from TMDB.";
+}
+
+function BoxOfficeMath({ link }: { link: BoxOfficeInfo }) {
+  if (link.mediaType === "tv" && link.votes != null && link.episodes != null && link.constant != null) {
+    return (
+      <>
+        <span className="bo-tip-lead">
+          TV has no real box office, so we estimate one from TMDB:
+        </span>
+        <span className="bo-tip-row">votes × √(episodes) × {link.constant.toLocaleString()}</span>
+        <span className="bo-tip-row">
+          = {link.votes.toLocaleString()} × √{link.episodes.toLocaleString()} × {link.constant.toLocaleString()}
+        </span>
+        <span className="bo-tip-row bo-tip-total">≈ {money(link.revenue)}</span>
+      </>
+    );
+  }
+  if (link.basis === "streaming" && link.votes != null && link.constant != null) {
+    return (
+      <>
+        <span className="bo-tip-lead">
+          No theatrical release (streaming film), so we estimate from TMDB audience size:
+        </span>
+        <span className="bo-tip-row">votes × {link.constant.toLocaleString()}</span>
+        <span className="bo-tip-row">
+          = {link.votes.toLocaleString()} × {link.constant.toLocaleString()}
+        </span>
+        <span className="bo-tip-row bo-tip-total">≈ {money(link.revenue)}</span>
+      </>
+    );
+  }
+  return <span className="bo-tip-lead">Real worldwide theatrical box office gross, sourced from TMDB.</span>;
 }
 
 function normalizeHintKey(value: string): string {
@@ -265,11 +342,11 @@ export default function GameClient({ variant }: { variant: GameVariant }) {
   const [status, setStatus] = useState<"playing" | "won">("playing");
   const [hintsLeft, setHintsLeft] = useState(3);
   const [hinting, setHinting] = useState(false);
-  const [activeHintType, setActiveHintType] = useState<"movie" | "actor" | null>(null);
+  const [activeHintType, setActiveHintType] = useState<"movie" | "actor" | "star-start" | "star-target" | null>(null);
   const [movieHintFillSignal, setMovieHintFillSignal] = useState(0);
   const [costarHintFillSignal, setCostarHintFillSignal] = useState(0);
   const [difficulty, setDifficulty] = useState<Difficulty>("easy");
-  const [mode, setMode] = useState<Mode>(variant === "daily" ? "movie" : "movie");
+  const [mode, setMode] = useState<Mode>(variant === "daily" ? "all" : "movie");
   const [theme, setTheme] = useState<Theme>(() =>
     typeof document !== "undefined" && document.documentElement.dataset.theme === "light"
       ? "light"
@@ -277,6 +354,9 @@ export default function GameClient({ variant }: { variant: GameVariant }) {
   );
   const [showSettings, setShowSettings] = useState(false);
   const [zoomed, setZoomed] = useState<Person | null>(null);
+  const [showStarHintSheet, setShowStarHintSheet] = useState(false);
+  const [starHintNotice, setStarHintNotice] = useState<{ text: string; good: boolean } | null>(null);
+  const [starTitleHints, setStarTitleHints] = useState<Partial<Record<StarHintRole, StarTitleHintState>>>({});
   const [usedActorHints, setUsedActorHints] = useState<Record<string, number[]>>({});
   const [undoHistory, setUndoHistory] = useState<UndoSnapshot[]>([]);
   const [shareFeedback, setShareFeedback] = useState<ShareFeedback | null>(null);
@@ -287,6 +367,7 @@ export default function GameClient({ variant }: { variant: GameVariant }) {
   const actorFetch = useCallback((q: string) => fetchActorSuggestions(q), []);
 
   const current = chain.length ? chain[chain.length - 1].actor : null;
+  const startActor = chain[0]?.actor ?? null;
   const stepsUsed = Math.max(0, chain.length - 1);
   const totalGross = chain.reduce((sum, link) => sum + (link.via?.revenue ?? 0), 0);
   // When showing a remembered Daily Reel completion the live chain is empty,
@@ -303,6 +384,9 @@ export default function GameClient({ variant }: { variant: GameVariant }) {
     setMovie("");
     setCostar("");
     setHintsLeft(3);
+    setShowStarHintSheet(false);
+    setStarHintNotice(null);
+    setStarTitleHints({});
     setUsedActorHints({});
     setUndoHistory([]);
     setShareFeedback(null);
@@ -373,7 +457,7 @@ export default function GameClient({ variant }: { variant: GameVariant }) {
 
   async function loadDailyRound(dateOverride?: string | null) {
     setLoading(true);
-    setMode("movie");
+    setMode("all");
     setDailyDate(dateOverride ?? null);
     resetRoundState();
 
@@ -420,6 +504,7 @@ export default function GameClient({ variant }: { variant: GameVariant }) {
       feedback,
       status,
       hintsLeft,
+      starTitleHints,
       usedActorHints,
     };
   }
@@ -504,6 +589,13 @@ export default function GameClient({ variant }: { variant: GameVariant }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [zoomed]);
 
+  useEffect(() => {
+    if (!showStarHintSheet) return;
+    const onKey = (event: KeyboardEvent) => event.key === "Escape" && setShowStarHintSheet(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [showStarHintSheet]);
+
   async function submitGuess(e: React.FormEvent) {
     e.preventDefault();
     if (!current || !target || checking || status !== "playing") return;
@@ -539,6 +631,11 @@ export default function GameClient({ variant }: { variant: GameVariant }) {
                 name: data.title.name,
                 year: data.title.year,
                 revenue: data.title.revenue ?? 0,
+                mediaType: data.title.mediaType,
+                basis: data.title.basis,
+                votes: data.title.votes,
+                episodes: data.title.episodes,
+                constant: data.title.constant,
                 posterPath: data.title.posterPath ?? null,
               }
             : null,
@@ -577,6 +674,7 @@ export default function GameClient({ variant }: { variant: GameVariant }) {
     setFeedback(previous.feedback);
     setStatus(previous.status);
     setHintsLeft(previous.hintsLeft);
+    setStarTitleHints(previous.starTitleHints);
     setUsedActorHints(previous.usedActorHints);
   }
 
@@ -635,6 +733,49 @@ export default function GameClient({ variant }: { variant: GameVariant }) {
     }
   }
 
+  async function requestStarTitles(role: StarHintRole, actor: Person) {
+    const existing = starTitleHints[role];
+    if (hinting || hintsLeft <= 0 || status !== "playing" || existing?.remainingTitles === 0) return;
+
+    setHinting(true);
+    setActiveHintType(role === "start" ? "star-start" : "star-target");
+    setStarHintNotice(null);
+
+    try {
+      const res = await fetch("/api/hint", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: actor.id,
+          excludeTitleIds: existing?.titles.map((title) => title.id) ?? [],
+          type: "star-titles",
+          mode,
+        }),
+      });
+      const data = await res.json();
+      if (!data.ok || !Array.isArray(data.titles) || data.titles.length === 0) {
+        setStarHintNotice({ text: data.message || "Couldn't fetch star titles.", good: false });
+        return;
+      }
+
+      setUndoHistory((prev) => [...prev, snapshotState()]);
+      setStarTitleHints((prev) => ({
+        ...prev,
+        [role]: {
+          remainingTitles: typeof data.remainingTitles === "number" ? data.remainingTitles : 0,
+          titles: [...(prev[role]?.titles ?? []), data.titles[0]],
+        },
+      }));
+      setHintsLeft((value) => value - 1);
+      setStarHintNotice({ text: data.message, good: true });
+    } catch (e: any) {
+      setStarHintNotice({ text: e.message || "Couldn't fetch star titles.", good: false });
+    } finally {
+      setHinting(false);
+      setActiveHintType(null);
+    }
+  }
+
   function getSharePayload(): SharePayload | null {
     if (!target || chain.length === 0) return null;
 
@@ -674,13 +815,16 @@ export default function GameClient({ variant }: { variant: GameVariant }) {
     window.open(url, "_blank", "noopener,noreferrer");
   }
 
+  function buildSmsShareUrl(message: string): string {
+    return `sms:?body=${encodeURIComponent(message)}`;
+  }
+
   async function handleShareTarget(targetName: string) {
     const payload = getSharePayload();
     if (!payload) return;
 
     const encodedUrl = encodeURIComponent(payload.url);
     const encodedText = encodeURIComponent(`${payload.text}\n${payload.url}`);
-    const encodedMessages = encodeURIComponent(`${payload.text}\n\n${payload.url}`);
 
     try {
       switch (targetName) {
@@ -707,7 +851,7 @@ export default function GameClient({ variant }: { variant: GameVariant }) {
           );
           break;
         case "messages":
-          window.location.href = `sms:&body=${encodedMessages}`;
+          window.location.href = buildSmsShareUrl(`${payload.text}\n\n${payload.url}`);
           break;
         case "copy":
           await navigator.clipboard.writeText(`${payload.text}\n\n${payload.url}`);
@@ -721,6 +865,72 @@ export default function GameClient({ variant }: { variant: GameVariant }) {
     } catch {
       setShareFeedback({ text: "Couldn't open that share option.", good: false });
     }
+  }
+
+  function renderStarHintPanel(role: StarHintRole, actor: Person, label: string) {
+    const hintState = starTitleHints[role];
+    const titles = hintState?.titles ?? [];
+    const canRevealMore = (hintState?.remainingTitles ?? (titles.length === 0 ? 1 : 0)) > 0;
+    const isLoading = activeHintType === (role === "start" ? "star-start" : "star-target");
+
+    return (
+      <section className="star-hint-panel">
+        <div className="star-hint-panel-head">
+          <div className="star-hint-actor">
+            <Avatar person={actor} />
+            <div>
+              <div className="star-hint-label">{label}</div>
+              <div className="star-hint-name">{actor.name}</div>
+            </div>
+          </div>
+          {canRevealMore && (
+            <button
+              type="button"
+              className="btn btn-primary star-hint-unlock"
+              disabled={hinting || hintsLeft <= 0}
+              onClick={() => void requestStarTitles(role, actor)}
+            >
+              {isLoading ? (
+                <>
+                  <span className="hint-spinner" aria-hidden="true" />
+                  Loading…
+                </>
+              ) : (
+                titles.length > 0 ? "Reveal another title (1 hint)" : "Reveal title (1 hint)"
+              )}
+            </button>
+          )}
+        </div>
+
+        {titles.length > 0 ? (
+          <>
+            <div className="star-hint-list" role="list">
+              {titles.map((title) => (
+                <div className="star-hint-title" role="listitem" key={`${role}-${title.id}`}>
+                  <div className="star-hint-poster" aria-hidden="true">
+                    {title.posterPath ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={IMG + title.posterPath} alt="" />
+                    ) : (
+                      <span className="star-hint-poster-fallback">{title.name}</span>
+                    )}
+                  </div>
+                  <div className="star-hint-copy">
+                    <div className="star-hint-title-name">{title.name}</div>
+                    <div className="star-hint-title-year">{title.year ?? "Title hint"}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="star-hint-note">Reference only — does not fill your guess.</div>
+          </>
+        ) : (
+          <div className="star-hint-note">
+            {hintsLeft > 0 ? "Reveal one recognizable title at a time for this star." : "No hints left to reveal new titles."}
+          </div>
+        )}
+      </section>
+    );
   }
 
   const retryAction =
@@ -835,7 +1045,6 @@ export default function GameClient({ variant }: { variant: GameVariant }) {
           <div className="daily-hero-kicker">The Daily Reel</div>
           <div className="daily-hero-headline">
             <h1>{formatDateKey(dailyDate)}</h1>
-            <span className="daily-hero-badge">Movies only</span>
           </div>
         </section>
       )}
@@ -941,7 +1150,20 @@ export default function GameClient({ variant }: { variant: GameVariant }) {
                       </div>
                     </div>
                     <div className="price">
-                      <div className="pl">Box Office</div>
+                      <div className="pl">
+                        Box Office
+                        <button
+                          type="button"
+                          className="bo-help"
+                          aria-label={boxOfficeTipText(linkData)}
+                          onClick={(e) => e.currentTarget.focus()}
+                        >
+                          ?
+                          <span className="bo-tip" role="tooltip">
+                            <BoxOfficeMath link={linkData} />
+                          </span>
+                        </button>
+                      </div>
                       <div className="pv">{money(linkData.revenue)}</div>
                     </div>
                   </div>
@@ -1011,7 +1233,7 @@ export default function GameClient({ variant }: { variant: GameVariant }) {
                 {shareFeedback && (
                   <div className={`share-flash ${shareFeedback.good ? "ok" : "no"}`}>{shareFeedback.text}</div>
                 )}
-                <div className="b-actions">
+                <div className={`b-actions${chain.length > 1 ? " b-actions-dual" : ""}`}>
                   {variant === "daily" ? (
                     <Link href="/free-play" className="btn btn-primary">
                       Try Free Play
@@ -1113,11 +1335,59 @@ export default function GameClient({ variant }: { variant: GameVariant }) {
                     "💡 Co-star"
                   )}
                 </button>
+                <button
+                  type="button"
+                  className="hint-btn"
+                  disabled={hinting || !startActor || !target}
+                  onClick={() => {
+                    setStarHintNotice(null);
+                    setShowStarHintSheet(true);
+                  }}
+                  title="Reveal reference titles for the start or target star"
+                >
+                  💡 Star titles
+                </button>
               </div>
               {feedback && <div className={`verify-flash ${feedback.good ? "ok" : "no"}`}>{feedback.text}</div>}
             </form>
           )}
         </>
+      )}
+
+      {showStarHintSheet && startActor && target && (
+        <div
+          className="star-hint-scrim"
+          onClick={() => setShowStarHintSheet(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Star title hints"
+        >
+          <div className="star-hint-sheet" onClick={(event) => event.stopPropagation()}>
+            <button
+              type="button"
+              className="credits-modal-close star-hint-close"
+              onClick={() => setShowStarHintSheet(false)}
+              aria-label="Close star title hints"
+            >
+              ×
+            </button>
+            <div className="star-hint-kicker">Reference Hints</div>
+            <h2 className="star-hint-title-main">Star title hints</h2>
+            <p className="star-hint-subtitle">
+              Reveal one recognizable title at a time for the start or target actor. These are reference-only and won&apos;t fill the movie field.
+            </p>
+            <div className="star-hint-meta">
+              Hints left: <b>{hintsLeft}</b>
+            </div>
+            <div className="star-hint-grid">
+              {renderStarHintPanel("start", startActor, "Start")}
+              {renderStarHintPanel("target", target, variant === "daily" ? "Finish at" : "Target")}
+            </div>
+            {starHintNotice && (
+              <div className={`verify-flash ${starHintNotice.good ? "ok" : "no"}`}>{starHintNotice.text}</div>
+            )}
+          </div>
+        </div>
       )}
 
       {zoomed && (
