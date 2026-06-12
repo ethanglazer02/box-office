@@ -8,14 +8,9 @@
     "start": "next start",
     "test": "node --test --experimental-strip-types",
     "lint": "next lint",
-    "build:pool": "node scripts/build-actor-pool.mjs",
-    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
-    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
-    "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
-    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
+    "build:pool": "node scripts/build-actor-pool.mjs"
   },
   "dependencies": {
-    "@opennextjs/cloudflare": "^1.19.11",
     "next": "^16.2.7",
     "react": "18.3.1",
     "react-dom": "18.3.1"
@@ -24,7 +19,6 @@
     "@types/node": "20.14.10",
     "@types/react": "18.3.3",
     "@types/react-dom": "18.3.0",
-    "typescript": "5.5.3",
-    "wrangler": "^4.99.0"
+    "typescript": "5.5.3"
   }
 }
