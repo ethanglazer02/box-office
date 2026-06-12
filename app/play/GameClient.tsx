@@ -250,7 +250,7 @@ function readSharedRound(params: URLSearchParams): SharedRound | null {
     difficultyParam === "easy" || difficultyParam === "medium" || difficultyParam === "hard"
       ? difficultyParam
       : "easy";
-  const mode: Mode = modeParam === "movie" || modeParam === "all" ? modeParam : "movie";
+  const mode: Mode = modeParam === "movie" || modeParam === "all" ? modeParam : "all";
   const startId = readPersonId("start", params);
   const targetId = readPersonId("target", params);
   if (!startId || !targetId || startId === targetId) return null;
@@ -346,7 +346,7 @@ export default function GameClient({ variant }: { variant: GameVariant }) {
   const [movieHintFillSignal, setMovieHintFillSignal] = useState(0);
   const [costarHintFillSignal, setCostarHintFillSignal] = useState(0);
   const [difficulty, setDifficulty] = useState<Difficulty>("easy");
-  const [mode, setMode] = useState<Mode>(variant === "daily" ? "all" : "movie");
+  const [mode, setMode] = useState<Mode>("all");
   const [theme, setTheme] = useState<Theme>(() =>
     typeof document !== "undefined" && document.documentElement.dataset.theme === "light"
       ? "light"
@@ -553,7 +553,7 @@ export default function GameClient({ variant }: { variant: GameVariant }) {
       difficultyParam === "easy" || difficultyParam === "medium" || difficultyParam === "hard"
         ? difficultyParam
         : "easy";
-    const startMode: Mode = modeParam === "movie" || modeParam === "all" ? modeParam : "movie";
+    const startMode: Mode = modeParam === "movie" || modeParam === "all" ? modeParam : "all";
     void newGame(startDifficulty, startMode);
 
     return () => {
@@ -962,8 +962,6 @@ export default function GameClient({ variant }: { variant: GameVariant }) {
                 >
                   <span className="gear">⚙</span>
                   {DIFFICULTIES.find((entry) => entry.id === difficulty)?.label}
-                  <span className="pill-sep">·</span>
-                  {mode === "movie" ? "Movies" : "Movies + TV"}
                 </button>
 
                 {showSettings && (
@@ -989,7 +987,7 @@ export default function GameClient({ variant }: { variant: GameVariant }) {
                     <div>
                       <div className="grp-label">Catalogue</div>
                       <div className="seg">
-                        {MODES.map((entry) => (
+                        {[...MODES].reverse().map((entry) => (
                           <button
                             key={entry.id}
                             type="button"
