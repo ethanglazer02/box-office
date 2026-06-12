@@ -6,6 +6,7 @@ export interface CreditTitle {
   title: string; // normalized display title (movie title or TV name)
   year: string | null;
   mediaType: "movie" | "tv";
+  posterPath: string | null;
   character?: string;
   voteCount: number; // popularity proxy, used to surface well-known titles in hints
   originalLanguage: string; // e.g. "en" — used to restrict to Hollywood titles
@@ -256,6 +257,7 @@ export async function getActingCredits(personId: number): Promise<CreditTitle[]>
           title: (c.title || c.name || "").trim(),
           year: date ? date.slice(0, 4) : null,
           mediaType: c.media_type as "movie" | "tv",
+          posterPath: c.poster_path ?? null,
           character: c.character,
           voteCount: c.vote_count ?? 0,
           originalLanguage: c.original_language ?? ""
