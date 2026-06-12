@@ -365,10 +365,11 @@ export default function GameClient({ variant }: { variant: GameVariant }) {
     const params = new URLSearchParams(window.location.search);
 
     if (variant === "daily") {
-      const requestedDate = params.get("date")?.trim() || null;
+      // Always load today's Daily Reel, ignoring any `date` param from a
+      // shared/older link so previous-day links land on the current reel.
       void (async () => {
         try {
-          await loadDailyRound(requestedDate);
+          await loadDailyRound(null);
         } catch (e: any) {
           if (cancelled) return;
           setError(e.message || "Failed to load the Daily Reel.");
@@ -564,7 +565,7 @@ export default function GameClient({ variant }: { variant: GameVariant }) {
       const url = `${window.location.origin}/daily?date=${dailyDate}`;
       return {
         title: "The Daily Reel",
-        text: `I completed the Daily Reel for ${formatDateKey(dailyDate)} with a total box office of ${money(totalGross)}. Can you do better?`,
+        text: `I completed the Daily Reel for ${formatDateKey(dailyDate)} in ${stepsUsed} ${stepsUsed === 1 ? "link" : "links"} with a total box office of ${money(totalGross)}. Can you do better?`,
         url,
       };
     }
@@ -581,7 +582,7 @@ export default function GameClient({ variant }: { variant: GameVariant }) {
     const text =
       `Box Office Challenge\n` +
       `${startActor.name} → ${target.name}\n` +
-      `${stepsUsed} ${stepsUsed === 1 ? "step" : "steps"} • ${money(totalGross)} path gross\n` +
+      `${stepsUsed} ${stepsUsed === 1 ? "link" : "links"} • ${money(totalGross)} path gross\n` +
       `${difficultyLabel} • ${modeLabel}\n\n` +
       `Think you know nicher movies? Beat my run with a lower box office path.`;
 
