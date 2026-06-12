@@ -5,6 +5,7 @@ import {
   CreditTitle,
   CastMember
 } from "./tmdb";
+import { listStarHintTitles, pickNextStarHintTitle, type HintTitle } from "./star-hint-titles";
 
 // "movie" = films only; "all" = films + TV.
 export type Mode = "movie" | "all";
@@ -31,6 +32,16 @@ function inMode(credits: CreditTitle[], mode: Mode): CreditTitle[] {
     if (!isHollywoodCredit(credit) && !isGloballyRecognizableForeignMovie(credit)) return false;
     return mode === "movie" ? credit.mediaType === "movie" : true;
   });
+}
+
+// Only released titles count. We reject only when TMDB gives a confirmed future
+// release date; a missing/unparseable date is left to pass so quirky catalog
+// entries aren't wrongly excluded.
+function isReleased(credit: CreditTitle): boolean {
+  if (!credit.releaseDate) return true;
+  const released = Date.parse(credit.releaseDate);
+  if (Number.isNaN(released)) return true;
+  return released <= Date.now();
 }
 
 // Normalize titles/names for forgiving comparison:
@@ -75,7 +86,18 @@ export interface GuessResult {
   // On a valid guess, the co-star becomes the new current actor.
   newActor?: { id: number; name: string; profilePath: string | null };
   // The verified title used to make the connection.
-  title?: { id: number; name: string; year: string | null; revenue: number; posterPath: string | null };
+  title?: {
+    id: number;
+    name: string;
+    year: string | null;
+    revenue: number;
+    mediaType: "movie" | "tv";
+    basis: "theatrical" | "streaming" | "tv";
+    votes?: number;
+    episodes?: number;
+    constant?: number;
+    posterPath: string | null;
+  };
 }
 
 /**
@@ -114,10 +136,26 @@ export async function validateGuess(params: {
     };
   }
 
-  // Prefer exact normalized matches, then check up to a handful of candidates
-  // (covers remakes / same-named titles). Most-credited titles first.
+  // Lock onto the title the user actually typed BEFORE filtering by release.
+  // titleMatches is a loose substring match, so "Enola Holmes 3" also matches
+  // "Enola Holmes" (film 1). If we filtered by release first, an unreleased
+  // sequel would silently fall back to its released predecessor. Preferring an
+  // exact normalized match keeps "Enola Holmes 3" pointed at film 3, so the
+  // release check below can correctly reject it as unreleased.
   const exact = matches.filter((c) => normalize(c.title) === normalize(movieTitle));
-  const candidates = (exact.length ? exact : matches).slice(0, 6);
+  const intended = exact.length ? exact : matches;
+
+  // Only released titles count — a film that hasn't come out has no box office.
+  const released = intended.filter(isReleased);
+  if (released.length === 0) {
+    return {
+      valid: false,
+      message: `"${movieTitle}" hasn't been released yet — only released titles count. Try another.`
+    };
+  }
+
+  // Check up to a handful of candidates (covers remakes / same-named titles).
+  const candidates = released.slice(0, 6);
 
   for (const cand of candidates) {
     const cast: CastMember[] = await getTitleCast(cand.id, cand.mediaType);
@@ -129,7 +167,7 @@ export async function validateGuess(params: {
     if (!costar) continue;
 
     const won = costar.id === targetActorId;
-    const revenue = await getTitleValue(cand.id, cand.mediaType);
+    const titleValue = await getTitleValue(cand.id, cand.mediaType);
       return {
         valid: true,
         won,
@@ -141,7 +179,12 @@ export async function validateGuess(params: {
           id: cand.id,
           name: cand.title,
           year: cand.year,
-          revenue,
+          revenue: titleValue.value,
+          mediaType: cand.mediaType,
+          basis: titleValue.basis,
+          votes: titleValue.votes,
+          episodes: titleValue.episodes,
+          constant: titleValue.constant,
           posterPath: cand.posterPath,
         }
       };
@@ -163,11 +206,13 @@ export interface HintResult {
   // The value to drop into the corresponding input field.
   fill?: string;
   actorId?: number;
+  remainingTitles?: number;
+  titles?: HintTitle[];
 }
 
 // Movie hint: surface a real, well-known title the current actor is in.
 export async function movieHint(currentActorId: number, mode: Mode): Promise<HintResult> {
-  const credits = inMode(await getActingCredits(currentActorId), mode);
+  const credits = inMode(await getActingCredits(currentActorId), mode).filter(isReleased);
   if (credits.length === 0) {
     return { ok: false, message: "No qualifying titles found for that actor." };
   }
@@ -194,7 +239,7 @@ export async function actorHint(
     return { ok: false, message: "Fill in a movie first to get a co-star hint." };
   }
   const credits = inMode(await getActingCredits(currentActorId), mode);
-  const matches = credits.filter((c) => titleMatches(movieTitle, c.title));
+  const matches = credits.filter((c) => titleMatches(movieTitle, c.title) && isReleased(c));
   if (matches.length === 0) {
     return {
       ok: false,
@@ -224,4 +269,29 @@ export async function actorHint(
     return { ok: false, message: `No more co-star hints left for "${movieTitle}".` };
   }
   return { ok: false, message: `Couldn't pull a cast list for "${movieTitle}".` };
+}
+
+export async function starTitlesHint(
+  actorId: number,
+  mode: Mode,
+  excludeTitleIds: number[] = []
+): Promise<HintResult> {
+  const pool = listStarHintTitles(await getActingCredits(actorId), mode);
+  if (pool.length === 0) {
+    return { ok: false, message: "No qualifying titles found for that star." };
+  }
+
+  const next = pickNextStarHintTitle(pool, excludeTitleIds);
+  if (next.titles.length === 0) {
+    return { ok: false, message: "No more star titles left to reveal for this actor." };
+  }
+
+  return {
+    ok: true,
+    titles: next.titles,
+    remainingTitles: next.remainingTitles,
+    message:
+      `💡 Revealed "${next.titles[0].name}"` +
+      `${next.titles[0].year ? ` (${next.titles[0].year})` : ""}.`,
+  };
 }
