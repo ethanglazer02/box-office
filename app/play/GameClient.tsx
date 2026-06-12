@@ -58,7 +58,7 @@ interface Person {
 
 interface ChainLink {
   actor: Person;
-  via: { name: string; year: string | null; revenue: number } | null;
+  via: { name: string; year: string | null; revenue: number; posterPath?: string | null } | null;
 }
 
 interface UndoSnapshot {
@@ -190,6 +190,49 @@ function formatDateKey(dateKey: string): string {
   }).format(new Date(Date.UTC(year, month - 1, day)));
 }
 
+const DAILY_RESULT_STORAGE_KEY = "box-office-daily-result";
+
+interface DailyResult {
+  date: string;
+  steps: number;
+  gross: number;
+  chain?: ChainLink[];
+}
+
+function readDailyResult(): DailyResult | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(DAILY_RESULT_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (
+      parsed &&
+      typeof parsed.date === "string" &&
+      typeof parsed.steps === "number" &&
+      typeof parsed.gross === "number"
+    ) {
+      return {
+        date: parsed.date,
+        steps: parsed.steps,
+        gross: parsed.gross,
+        chain: Array.isArray(parsed.chain) ? (parsed.chain as ChainLink[]) : undefined,
+      };
+    }
+  } catch {
+    // Ignore unparseable or unavailable storage.
+  }
+  return null;
+}
+
+function writeDailyResult(result: DailyResult): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(DAILY_RESULT_STORAGE_KEY, JSON.stringify(result));
+  } catch {
+    // Ignore storage failures (private mode, quota, etc.).
+  }
+}
+
 function Avatar({ person, onZoom }: { person: Person; onZoom?: (p: Person) => void }) {
   if (person.profilePath) {
     return (
@@ -213,6 +256,7 @@ export default function GameClient({ variant }: { variant: GameVariant }) {
   const [target, setTarget] = useState<Person | null>(null);
   const [chain, setChain] = useState<ChainLink[]>([]);
   const [dailyDate, setDailyDate] = useState<string | null>(null);
+  const [dailyCompleted, setDailyCompleted] = useState<DailyResult | null>(null);
 
   const [movie, setMovie] = useState("");
   const [costar, setCostar] = useState("");
@@ -236,6 +280,7 @@ export default function GameClient({ variant }: { variant: GameVariant }) {
   const [usedActorHints, setUsedActorHints] = useState<Record<string, number[]>>({});
   const [undoHistory, setUndoHistory] = useState<UndoSnapshot[]>([]);
   const [shareFeedback, setShareFeedback] = useState<ShareFeedback | null>(null);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
   const settingsRef = useRef<HTMLDivElement | null>(null);
 
   const titleFetch = useCallback((q: string) => fetchTitleSuggestions(q, mode), [mode]);
@@ -244,6 +289,10 @@ export default function GameClient({ variant }: { variant: GameVariant }) {
   const current = chain.length ? chain[chain.length - 1].actor : null;
   const stepsUsed = Math.max(0, chain.length - 1);
   const totalGross = chain.reduce((sum, link) => sum + (link.via?.revenue ?? 0), 0);
+  // When showing a remembered Daily Reel completion the live chain is empty,
+  // so fall back to the stats saved when the player originally cleared it.
+  const summarySteps = dailyCompleted ? dailyCompleted.steps : stepsUsed;
+  const summaryGross = dailyCompleted ? dailyCompleted.gross : totalGross;
   const actorHintKey = current ? `${current.id}|${mode}|${normalizeHintKey(movie)}` : "";
   const roundActorIds = chain.map((link) => link.actor.id);
 
@@ -257,6 +306,7 @@ export default function GameClient({ variant }: { variant: GameVariant }) {
     setUsedActorHints({});
     setUndoHistory([]);
     setShareFeedback(null);
+    setBannerDismissed(false);
   }, []);
 
   const syncFreePlayUrl = useCallback(
@@ -341,6 +391,20 @@ export default function GameClient({ variant }: { variant: GameVariant }) {
       setChain([{ actor: data.start, via: null }]);
       setDailyDate(data.date);
       syncDailyUrl(data.date);
+
+      // If this browser already cleared today's reel, show a read-only summary
+      // instead of a fresh playable board.
+      const savedResult = readDailyResult();
+      if (savedResult && savedResult.date === data.date) {
+        setDailyCompleted(savedResult);
+        // Restore the saved path so the player can still admire their run.
+        if (savedResult.chain && savedResult.chain.length > 1) {
+          setChain(savedResult.chain);
+        }
+        setStatus("won");
+      } else {
+        setDailyCompleted(null);
+      }
     } catch (e: any) {
       setError(e.message || "Failed to load the Daily Reel.");
     } finally {
@@ -471,7 +535,12 @@ export default function GameClient({ variant }: { variant: GameVariant }) {
         {
           actor: data.newActor,
           via: data.title
-            ? { name: data.title.name, year: data.title.year, revenue: data.title.revenue ?? 0 }
+            ? {
+                name: data.title.name,
+                year: data.title.year,
+                revenue: data.title.revenue ?? 0,
+                posterPath: data.title.posterPath ?? null,
+              }
             : null,
         },
       ];
@@ -481,6 +550,14 @@ export default function GameClient({ variant }: { variant: GameVariant }) {
 
       if (data.won) {
         setStatus("won");
+        if (variant === "daily" && dailyDate) {
+          writeDailyResult({
+            date: dailyDate,
+            steps: Math.max(0, nextChain.length - 1),
+            gross: nextChain.reduce((sum, link) => sum + (link.via?.revenue ?? 0), 0),
+            chain: nextChain,
+          });
+        }
       }
       setFeedback({ text: data.message, good: true });
     } catch (e: any) {
@@ -565,7 +642,7 @@ export default function GameClient({ variant }: { variant: GameVariant }) {
       const url = `${window.location.origin}/daily?date=${dailyDate}`;
       return {
         title: "The Daily Reel",
-        text: `I completed the Daily Reel for ${formatDateKey(dailyDate)} in ${stepsUsed} ${stepsUsed === 1 ? "link" : "links"} with a total box office of ${money(totalGross)}. Can you do better?`,
+        text: `I completed the Daily Reel for ${formatDateKey(dailyDate)} in ${summarySteps} ${summarySteps === 1 ? "link" : "links"} with a total box office of ${money(summaryGross)}. Can you do better?`,
         url,
       };
     }
@@ -843,7 +920,12 @@ export default function GameClient({ variant }: { variant: GameVariant }) {
                   <div className="ticket">
                     <div className="stub">
                       <div className="poster" aria-hidden="true">
-                        <div className="pt">{linkData.name}</div>
+                        {linkData.posterPath ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img className="poster-img" src={IMG + linkData.posterPath} alt="" />
+                        ) : (
+                          <div className="pt">{linkData.name}</div>
+                        )}
                       </div>
                       <div className="serial">№ {String(link.actor.id).padStart(6, "0")}</div>
                     </div>
@@ -875,38 +957,33 @@ export default function GameClient({ variant }: { variant: GameVariant }) {
             </div>
           )}
 
-          {status === "won" && (
+          {status === "won" && !bannerDismissed && (
             <div className="banner-scrim">
               <div className="banner win">
-                <div className="b-kicker">{variant === "daily" ? "Daily Cleared" : "Feature Complete"}</div>
-                <div className="b-title">
-                  Connected in {stepsUsed} {stepsUsed === 1 ? "step" : "steps"}
+                <div className="b-kicker">
+                  {variant === "daily"
+                    ? dailyCompleted
+                      ? "Daily Already Cleared"
+                      : "Daily Cleared"
+                    : "Feature Complete"}
                 </div>
+                <div className="b-title">{variant === "daily" ? "Reel Connected" : "Connection Complete"}</div>
                 <p className="b-sub">
                   {variant === "daily" && dailyDate
-                    ? `You cleared the ${formatDateKey(dailyDate)} Daily Reel with a path gross of ${money(totalGross)}.`
-                    : `Your path grossed ${money(totalGross)} at the box office. Ready for a new pairing?`}
+                    ? dailyCompleted
+                      ? `You already cleared the ${formatDateKey(dailyDate)} Daily Reel. Come back tomorrow for a new reel.`
+                      : `You cleared the ${formatDateKey(dailyDate)} Daily Reel.`
+                    : "Ready for a new pairing?"}
                 </p>
                 <div className="b-stats">
-                  <div className="b-stat">
-                    <div className="v">{stepsUsed}</div>
+                  <div className="b-stat b-stat-steps">
+                    <div className="v">{summarySteps}</div>
                     <div className="k">Steps Used</div>
                   </div>
-                  <div className="b-stat">
-                    <div className="v">{money(totalGross)}</div>
-                    <div className="k">Path Gross</div>
+                  <div className="b-stat b-stat-gross">
+                    <div className="v">{money(summaryGross)}</div>
+                    <div className="k">Total Gross</div>
                   </div>
-                </div>
-                <div className="b-actions">
-                  {variant === "daily" ? (
-                    <Link href="/free-play" className="btn btn-primary">
-                      Try Free Play
-                    </Link>
-                  ) : (
-                    <button type="button" className="btn btn-primary" onClick={() => void newGame()}>
-                      New game
-                    </button>
-                  )}
                 </div>
                 <div className="share-inline">
                   <div className="share-inline-label">Share your run</div>
@@ -934,8 +1011,38 @@ export default function GameClient({ variant }: { variant: GameVariant }) {
                 {shareFeedback && (
                   <div className={`share-flash ${shareFeedback.good ? "ok" : "no"}`}>{shareFeedback.text}</div>
                 )}
+                <div className="b-actions">
+                  {variant === "daily" ? (
+                    <Link href="/free-play" className="btn btn-primary">
+                      Try Free Play
+                    </Link>
+                  ) : (
+                    <button type="button" className="btn btn-primary" onClick={() => void newGame()}>
+                      New game
+                    </button>
+                  )}
+                  {chain.length > 1 && (
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => setBannerDismissed(true)}
+                    >
+                      Admire your run
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
+          )}
+
+          {status === "won" && bannerDismissed && (
+            <button
+              type="button"
+              className="btn btn-primary admire-return"
+              onClick={() => setBannerDismissed(false)}
+            >
+              Back to results
+            </button>
           )}
 
           {status === "playing" && (

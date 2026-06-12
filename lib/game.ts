@@ -75,7 +75,7 @@ export interface GuessResult {
   // On a valid guess, the co-star becomes the new current actor.
   newActor?: { id: number; name: string; profilePath: string | null };
   // The verified title used to make the connection.
-  title?: { id: number; name: string; year: string | null; revenue: number };
+  title?: { id: number; name: string; year: string | null; revenue: number; posterPath: string | null };
 }
 
 /**
@@ -130,15 +130,21 @@ export async function validateGuess(params: {
 
     const won = costar.id === targetActorId;
     const revenue = await getTitleValue(cand.id, cand.mediaType);
-    return {
-      valid: true,
-      won,
-      message: won
-        ? `🎉 Connected! ${costar.name} is the target — you linked them in ${cand.title}.`
-        : `✓ Verified: ${costar.name} appears in ${cand.title}${cand.year ? ` (${cand.year})` : ""}.`,
-      newActor: { id: costar.id, name: costar.name, profilePath: costar.profilePath },
-      title: { id: cand.id, name: cand.title, year: cand.year, revenue }
-    };
+      return {
+        valid: true,
+        won,
+        message: won
+          ? `🎉 Connected! ${costar.name} is the target — you linked them in ${cand.title}.`
+          : `✓ Verified: ${costar.name} appears in ${cand.title}${cand.year ? ` (${cand.year})` : ""}.`,
+        newActor: { id: costar.id, name: costar.name, profilePath: costar.profilePath },
+        title: {
+          id: cand.id,
+          name: cand.title,
+          year: cand.year,
+          revenue,
+          posterPath: cand.posterPath,
+        }
+      };
   }
 
   return {
