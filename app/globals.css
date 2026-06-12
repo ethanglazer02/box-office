@@ -1427,19 +1427,30 @@ img.avatar {
   z-index: 60;
   display: grid;
   place-items: center;
-  padding: 24px;
+  overflow-y: auto;
+  padding:
+    max(24px, env(safe-area-inset-top))
+    24px
+    max(24px, env(safe-area-inset-bottom));
   background: var(--scrim);
   backdrop-filter: blur(6px);
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   animation: popIn 0.2s ease;
 }
 
 .banner {
   width: min(94vw, 560px);
+  max-width: 100%;
+  max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 48px);
+  margin: auto 0;
+  overflow-y: auto;
   padding: clamp(28px, 5vw, 44px);
   border: 1px solid color-mix(in oklch, var(--brass) 40%, transparent);
   border-radius: 20px;
   background: var(--noir-2);
   text-align: center;
+  -webkit-overflow-scrolling: touch;
   box-shadow:
     0 40px 100px -30px #000,
     0 0 0 1px color-mix(in oklch, var(--brass) 14%, transparent) inset;
