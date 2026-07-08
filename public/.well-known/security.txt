@@ -1,0 +1,4 @@
+Contact: mailto:ethanglazer02@gmail.com
+Canonical: https://playboxoffice.me/.well-known/security.txt
+Expires: 2027-07-08T02:42:19Z
+Preferred-Languages: en
