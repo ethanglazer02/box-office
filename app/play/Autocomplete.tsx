@@ -34,7 +34,7 @@ export default function Autocomplete({
   const [loading, setLoading] = useState(false);
 
   const boxRef = useRef<HTMLDivElement>(null);
-  const debounce = useRef<ReturnType<typeof setTimeout>>();
+  const debounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   // Guards against out-of-order responses: only the latest query may render.
   const seq = useRef(0);
   // Set right after a selection so the value-change effect doesn't reopen the menu.
