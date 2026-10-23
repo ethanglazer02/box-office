@@ -1,4 +1,5 @@
 export interface HintTitleCredit {
+  character?: string;
   id: number;
   mediaType: "movie" | "tv";
   originalLanguage: string;
